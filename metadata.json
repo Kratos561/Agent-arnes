@@ -1,0 +1,6 @@
+{
+  "name": "ChatGPT API Client",
+  "description": "ChatGPT-style AI chat interface and AI-Agent Ready Platform featuring Universal REST API v1, Model Context Protocol (MCP) server, SUPER_ADMIN_AGENT controls, tool execution catalog, audit logging, and automated backups.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

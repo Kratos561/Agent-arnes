@@ -1,0 +1,290 @@
+import { ProviderConfig, ChatSession, ModelInfo, PRESET_PROVIDERS, VERIFIED_DEFAULT_MODELS, DEFAULT_PARAMETERS } from './types';
+import { createId } from './utils';
+
+const STORAGE_KEYS = {
+  PROVIDERS: 'chat_providers_v1',
+  ACTIVE_PROVIDER_ID: 'chat_active_provider_id_v1',
+  ACTIVE_MODEL_ID: 'chat_active_model_id_v1',
+  CACHED_MODELS_PREFIX: 'chat_models_cache_',
+  SESSIONS: 'chat_sessions_v1',
+  ACTIVE_SESSION_ID: 'chat_active_session_id_v1',
+  SYSTEM_PROMPT: 'chat_system_prompt_v1',
+  DARK_MODE: 'chat_dark_mode_v1',
+};
+
+export const INITIAL_SESSION_ID = 'default_chat_session';
+
+export function createInitialSession(): ChatSession {
+  return {
+    id: INITIAL_SESSION_ID,
+    title: 'Nuevo Chat',
+    createdAt: 0,
+    updatedAt: 0,
+    providerId: 'gemini',
+    modelId: 'gemini-3.7-flash',
+    systemPrompt: '',
+    messages: [],
+    parameters: { ...DEFAULT_PARAMETERS },
+  };
+}
+
+// --- Providers Storage ---
+export function loadProviders(): ProviderConfig[] {
+  if (typeof window === 'undefined') return PRESET_PROVIDERS;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.PROVIDERS);
+    if (!raw) return PRESET_PROVIDERS;
+    const parsed: ProviderConfig[] = JSON.parse(raw);
+    
+    // Merge with preset list so updated presets are included
+    const merged = [...PRESET_PROVIDERS];
+    for (const p of parsed) {
+      const idx = merged.findIndex((m) => m.id === p.id);
+      if (idx >= 0) {
+        merged[idx] = { ...merged[idx], ...p };
+      } else {
+        merged.push(p);
+      }
+    }
+    return merged;
+  } catch {
+    return PRESET_PROVIDERS;
+  }
+}
+
+export function saveProviders(providers: ProviderConfig[]) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(STORAGE_KEYS.PROVIDERS, JSON.stringify(providers));
+    notifyAppStoreUpdate({ providers });
+  } catch (e) {
+    console.error('Error saving providers to localStorage', e);
+  }
+}
+
+export function loadActiveProviderId(): string {
+  if (typeof window === 'undefined') return 'gemini';
+  return localStorage.getItem(STORAGE_KEYS.ACTIVE_PROVIDER_ID) || 'gemini';
+}
+
+export function saveActiveProviderId(id: string) {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(STORAGE_KEYS.ACTIVE_PROVIDER_ID, id);
+  notifyAppStoreUpdate({ activeProviderId: id });
+}
+
+export function loadActiveModelId(): string {
+  if (typeof window === 'undefined') return 'gemini-3.7-flash';
+  return localStorage.getItem(STORAGE_KEYS.ACTIVE_MODEL_ID) || 'gemini-3.7-flash';
+}
+
+export function saveActiveModelId(id: string) {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(STORAGE_KEYS.ACTIVE_MODEL_ID, id);
+  notifyAppStoreUpdate({ activeModelId: id });
+}
+
+// --- Cached Models by Provider ---
+export function loadCachedModels(providerId: string): ModelInfo[] {
+  const verified = VERIFIED_DEFAULT_MODELS[providerId] || [];
+  if (typeof window === 'undefined') return verified;
+  try {
+    const raw = localStorage.getItem(`${STORAGE_KEYS.CACHED_MODELS_PREFIX}${providerId}`);
+    if (!raw) return verified;
+    const parsed: ModelInfo[] = JSON.parse(raw);
+    if (!parsed || parsed.length === 0) return verified;
+    return parsed;
+  } catch {
+    return verified;
+  }
+}
+
+export function saveCachedModels(providerId: string, models: ModelInfo[]) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(`${STORAGE_KEYS.CACHED_MODELS_PREFIX}${providerId}`, JSON.stringify(models));
+  } catch (e) {
+    console.error('Error saving models cache', e);
+  }
+}
+
+// --- Chat Sessions Storage ---
+export function loadSessions(): ChatSession[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.SESSIONS);
+    if (!raw) return [];
+    const parsed: ChatSession[] = JSON.parse(raw);
+    return parsed.map((s) => ({
+      ...s,
+      parameters: {
+        ...DEFAULT_PARAMETERS,
+        ...(s.parameters || {}),
+        max_tokens: Math.max(s.parameters?.max_tokens || 8192, 8192),
+      },
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export function saveSessions(sessions: ChatSession[]) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(STORAGE_KEYS.SESSIONS, JSON.stringify(sessions));
+    notifyAppStoreUpdate({ sessions });
+  } catch (e) {
+    console.error('Error saving sessions', e);
+  }
+}
+
+export function loadActiveSessionId(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(STORAGE_KEYS.ACTIVE_SESSION_ID);
+}
+
+export function saveActiveSessionId(id: string | null) {
+  if (typeof window === 'undefined') return;
+  if (id) {
+    localStorage.setItem(STORAGE_KEYS.ACTIVE_SESSION_ID, id);
+  } else {
+    localStorage.removeItem(STORAGE_KEYS.ACTIVE_SESSION_ID);
+  }
+  notifyAppStoreUpdate({ activeSessionId: id });
+}
+
+// --- Global System Prompt ---
+export function loadGlobalSystemPrompt(): string {
+  if (typeof window === 'undefined') return '';
+  return localStorage.getItem(STORAGE_KEYS.SYSTEM_PROMPT) || '';
+}
+
+export function saveGlobalSystemPrompt(prompt: string) {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(STORAGE_KEYS.SYSTEM_PROMPT, prompt);
+  notifyAppStoreUpdate({ globalSystemPrompt: prompt });
+}
+
+// --- Create New Session ---
+export function createNewSession(providerId: string, modelId: string, systemPrompt?: string): ChatSession {
+  return {
+    id: createId('chat'),
+    title: 'Nuevo Chat',
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    providerId,
+    modelId,
+    systemPrompt: systemPrompt || '',
+    messages: [],
+    parameters: { ...DEFAULT_PARAMETERS },
+  };
+}
+
+// --- App State Store for Hydration Safety ---
+export interface AppStorageState {
+  providers: ProviderConfig[];
+  activeProviderId: string;
+  activeModelId: string;
+  cachedModels: ModelInfo[];
+  sessions: ChatSession[];
+  activeSessionId: string | null;
+  globalSystemPrompt: string;
+}
+
+const SERVER_SNAPSHOT: AppStorageState = {
+  providers: PRESET_PROVIDERS,
+  activeProviderId: 'gemini',
+  activeModelId: 'gemini-3.7-flash',
+  cachedModels: VERIFIED_DEFAULT_MODELS.gemini || [],
+  sessions: [createInitialSession()],
+  activeSessionId: INITIAL_SESSION_ID,
+  globalSystemPrompt: '',
+};
+
+let clientSnapshot: AppStorageState = SERVER_SNAPSHOT;
+let isClientInitialized = false;
+let listeners: Array<() => void> = [];
+
+export function subscribeAppStore(listener: () => void) {
+  listeners.push(listener);
+  return () => {
+    listeners = listeners.filter((l) => l !== listener);
+  };
+}
+
+export function notifyAppStoreUpdate(partial: Partial<AppStorageState>) {
+  clientSnapshot = {
+    ...clientSnapshot,
+    ...partial,
+  };
+  for (const listener of listeners) {
+    listener();
+  }
+}
+
+export function getAppStoreSnapshot(): AppStorageState {
+  if (typeof window === 'undefined') {
+    return SERVER_SNAPSHOT;
+  }
+  if (!isClientInitialized) {
+    isClientInitialized = true;
+    const loadedProviders = loadProviders();
+    const loadedProviderId = loadActiveProviderId();
+    const loadedModelId = loadActiveModelId();
+    const loadedCachedModels = loadCachedModels(loadedProviderId);
+    let loadedSessions = loadSessions();
+    let loadedActiveSessionId = loadActiveSessionId();
+
+    if (loadedSessions.length === 0) {
+      const initial = createNewSession(loadedProviderId, loadedModelId, loadGlobalSystemPrompt());
+      loadedSessions = [initial];
+      loadedActiveSessionId = initial.id;
+      saveSessions(loadedSessions);
+      saveActiveSessionId(initial.id);
+    } else if (!loadedActiveSessionId || !loadedSessions.some((s) => s.id === loadedActiveSessionId)) {
+      loadedActiveSessionId = loadedSessions[0]?.id || null;
+      saveActiveSessionId(loadedActiveSessionId);
+    }
+
+    clientSnapshot = {
+      providers: loadedProviders,
+      activeProviderId: loadedProviderId,
+      activeModelId: loadedModelId,
+      cachedModels: loadedCachedModels,
+      sessions: loadedSessions,
+      activeSessionId: loadedActiveSessionId,
+      globalSystemPrompt: loadGlobalSystemPrompt(),
+    };
+  }
+  return clientSnapshot;
+}
+
+export function getAppStoreServerSnapshot(): AppStorageState {
+  return SERVER_SNAPSHOT;
+}
+
+// --- Export Conversation Helpers ---
+export function exportSessionToMarkdown(session: ChatSession): string {
+  let md = `# ${session.title}\n\n`;
+  md += `*Fecha: ${session.createdAt ? new Date(session.createdAt).toLocaleString() : 'N/A'}*\n`;
+  md += `*Modelo: ${session.modelId} (Proveedor: ${session.providerId})*\n\n---\n\n`;
+
+  if (session.systemPrompt) {
+    md += `> **System Prompt:**\n> ${session.systemPrompt.replace(/\n/g, '\n> ')}\n\n---\n\n`;
+  }
+
+  for (const m of session.messages) {
+    const roleName = m.role === 'user' ? '👤 Usuario' : m.role === 'assistant' ? '🤖 Asistente' : '⚙️ Sistema';
+    md += `### ${roleName} (${m.timestamp ? new Date(m.timestamp).toLocaleTimeString() : ''})\n\n`;
+    if (m.reasoning_content) {
+      md += `<details><summary>Pensamiento del modelo</summary>\n\n${m.reasoning_content}\n\n</details>\n\n`;
+    }
+    md += `${m.content}\n\n---\n\n`;
+  }
+
+  return md;
+}
+
+export function exportSessionToJSON(session: ChatSession): string {
+  return JSON.stringify(session, null, 2);
+}
