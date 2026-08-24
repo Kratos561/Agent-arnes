@@ -1,5 +1,8 @@
 'use client';
 
+export const dynamic = 'force-static';
+export const revalidate = 0;
+
 import React, { useState, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
 import { 
   Menu, 
