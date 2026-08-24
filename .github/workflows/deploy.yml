@@ -29,6 +29,13 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Move API routes (not compatible with static export)
+        run: |
+          if [ -d "app/api" ]; then
+            mv app/api app/api-backup
+            echo "API routes moved to app/api-backup (excluded from static export)"
+          fi
+
       - name: Build
         run: npm run build
 
