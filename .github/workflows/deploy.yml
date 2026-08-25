@@ -26,18 +26,14 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install dependencies
-        run: npm install
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
 
-      - name: Move API routes outside app/ (not compatible with static export)
-        run: |
-          if [ -d "app/api" ]; then
-            mv app/api ./api-backup
-            echo "API routes moved to ./api-backup (excluded from static export)"
-          fi
+      - name: Install dependencies
+        run: bun install
 
       - name: Build
-        run: npm run build
+        run: bun run build
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

@@ -10,7 +10,7 @@ import {
   Share2, 
   Trash2, 
   Settings, 
-  Bot,
+  Wrench,
 } from 'lucide-react';
 import { 
   ProviderConfig, 
@@ -45,7 +45,7 @@ import { SettingsModal } from '@/components/SettingsModal';
 import { ParametersModal } from '@/components/ParametersModal';
 import { SystemPromptModal } from '@/components/SystemPromptModal';
 import { ExportModal } from '@/components/ExportModal';
-import { AgentControlHubModal } from '@/components/AgentControlHubModal';
+import { ToolsModal } from '@/components/ToolsModal';
 
 export default function Home() {
   // Hydration-safe reactive store from LocalStorage
@@ -76,7 +76,7 @@ export default function Home() {
   const [isParametersOpen, setIsParametersOpen] = useState(false);
   const [isSystemPromptOpen, setIsSystemPromptOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
-  const [isAgentHubOpen, setIsAgentHubOpen] = useState(false);
+  const [isToolsOpen, setIsToolsOpen] = useState(false);
   
   // Streaming state
   const [isGenerating, setIsGenerating] = useState(false);
@@ -88,6 +88,7 @@ export default function Home() {
     const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
     const savedDark = localStorage.getItem('chat_dark_mode_v1');
     const darkModeActive = savedDark !== null ? savedDark === 'true' : isDark;
+    setIsDarkMode(darkModeActive);
     if (darkModeActive) {
       document.documentElement.classList.add('dark');
     } else {
@@ -332,10 +333,7 @@ export default function Home() {
   const handleSendMessage = async (userContent: string) => {
     if (!userContent.trim() || !activeSession || isGenerating) return;
 
-    // Check if API key is missing for remote provider (Gemini is native and doesn't require user input)
-    const isGemini = activeProvider.id === 'gemini' || activeProvider.baseUrl.includes('/api/proxy/gemini');
-    const isLocal = activeProvider.id === 'ollama' || activeProvider.id === 'lmstudio';
-    const needsKey = !activeProvider.apiKey && !isGemini && !isLocal;
+    const needsKey = !activeProvider.apiKey;
 
     if (needsKey) {
       setIsSettingsOpen(true);
@@ -693,9 +691,7 @@ export default function Home() {
   };
 
   const hasApiKey = Boolean(
-    activeProvider.apiKey?.trim() ||
-    activeProvider.id === 'ollama' ||
-    activeProvider.id === 'lmstudio'
+    activeProvider.apiKey?.trim()
   );
 
   return (
@@ -816,16 +812,16 @@ export default function Home() {
               </button>
             )}
 
-            {/* AI-Agent Control Hub & MCP Trigger */}
+            {/* Browser-only toolbench */}
             <button
               type="button"
-              id="header-agent-hub-btn"
-              onClick={() => setIsAgentHubOpen(true)}
-              title="AI-Agent Ready Control Hub & Servidor MCP"
+              id="header-tools-btn"
+              onClick={() => setIsToolsOpen(true)}
+              title="Abrir herramientas locales"
               className="p-2 rounded-xl text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/40 border border-blue-500/20 transition-colors flex items-center gap-1 text-xs font-semibold"
             >
-              <Bot className="w-4 h-4" />
-              <span className="hidden sm:inline">AI-Agent Hub</span>
+              <Wrench className="w-4 h-4" />
+              <span className="hidden sm:inline">Herramientas</span>
             </button>
 
             {/* Provider & Base URL Settings Trigger */}
@@ -943,11 +939,7 @@ export default function Home() {
         session={activeSession}
       />
 
-      {/* AI-Agent Control Hub & MCP Server Modal */}
-      <AgentControlHubModal
-        isOpen={isAgentHubOpen}
-        onClose={() => setIsAgentHubOpen(false)}
-      />
+      <ToolsModal isOpen={isToolsOpen} onClose={() => setIsToolsOpen(false)} />
     </div>
   );
 }

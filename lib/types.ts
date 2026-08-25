@@ -70,21 +70,13 @@ export const DEFAULT_PARAMETERS: ModelParameters = {
 
 export const PRESET_PROVIDERS: ProviderConfig[] = [
   {
-    id: 'gemini',
-    name: 'Google Gemini (Nativo & Gratuito)',
-    baseUrl: '/api/proxy/gemini',
-    apiKey: '',
-    defaultModel: 'gemini-3.7-flash',
-  },
-  {
     id: 'openrouter',
-    name: 'OpenRouter (Todos los Modelos)',
+    name: 'OpenRouter (CORS compatible)',
     baseUrl: 'https://openrouter.ai/api/v1',
     apiKey: '',
-    defaultModel: 'qwen/qwen-2.5-72b-instruct:free',
+    defaultModel: 'openai/gpt-4o-mini',
     customHeaders: {
-      'HTTP-Referer': 'https://aistudio.google.com',
-      'X-Title': 'AI Studio Universal Chat Workspace',
+      'X-Title': 'Agent Arnes',
     },
   },
   {
@@ -153,36 +145,13 @@ export const PRESET_PROVIDERS: ProviderConfig[] = [
 ];
 
 export const VERIFIED_DEFAULT_MODELS: Record<string, ModelInfo[]> = {
-  gemini: [
-    {
-      id: 'gemini-3.7-flash',
-      name: 'Gemini 3.7 Flash (Recomendado)',
-      description: 'El modelo multimodal más veloz e inteligente de Google, listo para usar sin configurar API Key.',
-      context_length: 1048576,
-      owned_by: 'Google',
-    },
-    {
-      id: 'gemini-3.6-flash',
-      name: 'Gemini 3.6 Flash (Máxima Estabilidad)',
-      description: 'Generación instantánea y alta confiabilidad para código y tareas extensas.',
-      context_length: 1048576,
-      owned_by: 'Google',
-    },
-    {
-      id: 'gemini-3.1-flash-lite',
-      name: 'Gemini 3.1 Flash Lite',
-      description: 'Ultra ligero y de mínima latencia para respuestas instantáneas.',
-      context_length: 1048576,
-      owned_by: 'Google',
-    },
-  ],
   openrouter: [
     {
-      id: 'qwen/qwen-2.5-72b-instruct:free',
-      name: 'Qwen 2.5 72B Instruct (⚡ Gratis)',
-      description: 'Modelo insignia de Alibaba con enorme capacidad en programación y razonamiento (Tier Gratuito).',
-      context_length: 131072,
-      owned_by: 'Alibaba',
+      id: 'openai/gpt-4o-mini',
+      name: 'GPT-4o mini',
+      description: 'Modelo rápido para tareas generales. Consulta el catálogo en vivo para opciones actuales.',
+      context_length: 128000,
+      owned_by: 'OpenAI',
     },
     {
       id: 'qwen/qwen-2.5-coder-32b-instruct:free',

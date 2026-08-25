@@ -1,6 +1,6 @@
 {
-  "name": "ChatGPT API Client",
-  "description": "ChatGPT-style AI chat interface and AI-Agent Ready Platform featuring Universal REST API v1, Model Context Protocol (MCP) server, SUPER_ADMIN_AGENT controls, tool execution catalog, audit logging, and automated backups.",
+  "name": "Agent Arnes",
+  "description": "Cliente web estático de chat con streaming, sesiones locales y herramientas de navegador.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": ["BROWSER_LOCAL_TOOLS", "OPENAI_COMPATIBLE_CHAT"]
 }

@@ -23,6 +23,7 @@ const nextConfig: NextConfig = {
   },
   output: 'export',
   distDir: 'out',
+  trailingSlash: true,
   basePath: isProd ? '/Agent-arnes' : '',
   assetPrefix: isProd ? '/Agent-arnes/' : '',
   transpilePackages: ['motion'],

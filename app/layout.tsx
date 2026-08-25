@@ -6,16 +6,16 @@ export const revalidate = 0;
 
 export const metadata: Metadata = {
   title: 'Agent-arnes - AI-Agent Ready Platform',
-  description: 'Plataforma lista para Agentes de IA con interfaz de chat universal y backend completo para ejecución de agentes.',
+  description: 'Cliente de chat estático con streaming y herramientas locales de navegador.',
   openGraph: {
     title: 'Agent-arnes - AI-Agent Ready Platform',
-    description: 'Plataforma lista para Agentes de IA con interfaz de chat universal y backend completo para ejecución de agentes.',
+    description: 'Cliente de chat estático con streaming y herramientas locales de navegador.',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Agent-arnes - AI-Agent Ready Platform',
-    description: 'Plataforma lista para Agentes de IA con interfaz de chat universal y backend completo para ejecución de agentes.',
+    description: 'Cliente de chat estático con streaming y herramientas locales de navegador.',
   },
 };
 

@@ -1,14 +1,14 @@
 # Agent Instructions
 
 ## Project Overview
-This is an AI-Agent Ready Platform built with Next.js 15, React 19, and TypeScript. It provides a universal chat workspace with support for multiple AI providers and includes complete backend infrastructure for AI agents.
+This is a static AI chat workspace built with Next.js 15, React 19, and TypeScript. It can be exported safely to GitHub Pages and connects directly to OpenAI-compatible providers that permit browser CORS requests.
 
 ## Architecture
 - **Frontend**: Next.js 15 App Router with React 19
 - **Styling**: Tailwind CSS v4
 - **State Management**: Custom useSyncExternalStore pattern with localStorage
-- **API Routes**: REST API and MCP server
-- **AI Integration**: Google GenAI SDK with streaming support
+- **Deployment**: Static export to GitHub Pages
+- **AI Integration**: Direct OpenAI-compatible streaming with user-supplied browser-local keys
 
 ## Development Commands
 
@@ -22,26 +22,25 @@ This is an AI-Agent Ready Platform built with Next.js 15, React 19, and TypeScri
 ## Key Files
 
 - app/page.tsx - Main chat interface
-- lib/api-client.ts - Streaming chat client with automatic fallback
+- lib/api-client.ts - Direct streaming chat client and honest harness context
 - lib/storage.ts - Reactive state management
-- lib/agent-*.ts - Agent infrastructure
-- app/api/* - API routes
+- components/ToolsModal.tsx - Browser-only local tools
 
 ## Important Notes
 
 ### Harness Context
-This project includes a built-in harness system that provides:
+This project includes a browser-only harness system that provides:
 1. Markdown rendering with syntax highlighting
 2. LaTeX/KaTeX support for mathematical notation
 3. Reasoning panels for chain-of-thought display
 4. Code blocks with language detection and copy buttons
 5. System prompts with runtime context injection
+6. Local JSON, Base64, URL, SHA-256, token-estimation and timestamp tools
 
 ### Agent Safety
-- Always commit changes before large modifications
-- Use the provided backup system (lib/agent-backup.ts)
-- Check audit logs (lib/agent-audit.ts) before destructive operations
-- Verify API responses before executing agent actions
+- Do not add Next API routes: GitHub Pages serves only static files.
+- Do not claim server, filesystem, shell, MCP or web-browsing powers from the static client.
+- Provider API keys remain in localStorage and must never be committed.
 
 ### Testing
 When testing changes:
@@ -49,4 +48,4 @@ When testing changes:
 2. Verify session persistence across page reloads
 3. Check dark mode toggle behavior
 4. Test export functionality
-5. Verify API endpoints respond correctly
+5. Verify provider connection failures present a useful CORS/key message

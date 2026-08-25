@@ -79,7 +79,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
       </div>
 
       {/* Warning banner if API key is missing and provider needs one */}
-      {!hasApiKey && provider.id !== 'gemini' && !provider.baseUrl.includes('/api/proxy/gemini') && provider.id !== 'ollama' && provider.id !== 'lmstudio' && (
+      {!hasApiKey && (
         <div className="w-full mb-8 p-4 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-left flex items-start gap-3">
           <Key className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
           <div className="flex-1">
@@ -87,7 +87,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
               API Key no configurada para {provider.name}
             </h4>
             <p className="text-xs text-amber-700 dark:text-amber-300 mt-1 leading-relaxed">
-              Para comenzar a chatear con este proveedor, configura tu clave API y Base URL en la ventana de ajustes.
+              Para comenzar a chatear con este proveedor, configura tu clave API y Base URL en la ventana de ajustes. La clave se guarda sólo en el almacenamiento local de este navegador.
             </p>
             <button
               onClick={onOpenSettings}

@@ -352,11 +352,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <Key className="w-3.5 h-3.5 text-neutral-400" />
                   Clave de API (API Key)
                 </label>
-                {currentProvider.id === 'gemini' && (
-                  <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
-                    ⚡ Integración nativa activa (No requiere configuración manual)
-                  </span>
-                )}
                 {currentProvider.id === 'openrouter' && (
                   <a
                     href="https://openrouter.ai/keys"

@@ -1,7 +1,12 @@
 node_modules/
 .next/
+out/
 coverage/
 .DS_Store
 *.log
+*.tsbuildinfo
+.agent_backups/
+.agent_data/
 .env*
 !.env.example
+

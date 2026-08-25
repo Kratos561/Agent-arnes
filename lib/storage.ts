@@ -20,8 +20,8 @@ export function createInitialSession(): ChatSession {
     title: 'Nuevo Chat',
     createdAt: 0,
     updatedAt: 0,
-    providerId: 'gemini',
-    modelId: 'gemini-3.7-flash',
+    providerId: 'openrouter',
+    modelId: 'openai/gpt-4o-mini',
     systemPrompt: '',
     messages: [],
     parameters: { ...DEFAULT_PARAMETERS },
@@ -63,8 +63,8 @@ export function saveProviders(providers: ProviderConfig[]) {
 }
 
 export function loadActiveProviderId(): string {
-  if (typeof window === 'undefined') return 'gemini';
-  return localStorage.getItem(STORAGE_KEYS.ACTIVE_PROVIDER_ID) || 'gemini';
+  if (typeof window === 'undefined') return 'openrouter';
+  return localStorage.getItem(STORAGE_KEYS.ACTIVE_PROVIDER_ID) || 'openrouter';
 }
 
 export function saveActiveProviderId(id: string) {
@@ -74,8 +74,8 @@ export function saveActiveProviderId(id: string) {
 }
 
 export function loadActiveModelId(): string {
-  if (typeof window === 'undefined') return 'gemini-3.7-flash';
-  return localStorage.getItem(STORAGE_KEYS.ACTIVE_MODEL_ID) || 'gemini-3.7-flash';
+  if (typeof window === 'undefined') return 'openai/gpt-4o-mini';
+  return localStorage.getItem(STORAGE_KEYS.ACTIVE_MODEL_ID) || 'openai/gpt-4o-mini';
 }
 
 export function saveActiveModelId(id: string) {
@@ -193,9 +193,9 @@ export interface AppStorageState {
 
 const SERVER_SNAPSHOT: AppStorageState = {
   providers: PRESET_PROVIDERS,
-  activeProviderId: 'gemini',
-  activeModelId: 'gemini-3.7-flash',
-  cachedModels: VERIFIED_DEFAULT_MODELS.gemini || [],
+  activeProviderId: 'openrouter',
+  activeModelId: 'openai/gpt-4o-mini',
+  cachedModels: VERIFIED_DEFAULT_MODELS.openrouter || [],
   sessions: [createInitialSession()],
   activeSessionId: INITIAL_SESSION_ID,
   globalSystemPrompt: '',
@@ -229,8 +229,12 @@ export function getAppStoreSnapshot(): AppStorageState {
   if (!isClientInitialized) {
     isClientInitialized = true;
     const loadedProviders = loadProviders();
-    const loadedProviderId = loadActiveProviderId();
-    const loadedModelId = loadActiveModelId();
+    const storedProviderId = loadActiveProviderId();
+    const loadedProviderId = loadedProviders.some((provider) => provider.id === storedProviderId)
+      ? storedProviderId
+      : PRESET_PROVIDERS[0].id;
+    const storedModelId = loadActiveModelId();
+    const loadedModelId = storedModelId || PRESET_PROVIDERS[0].defaultModel || '';
     const loadedCachedModels = loadCachedModels(loadedProviderId);
     let loadedSessions = loadSessions();
     let loadedActiveSessionId = loadActiveSessionId();
@@ -246,6 +250,8 @@ export function getAppStoreSnapshot(): AppStorageState {
       saveActiveSessionId(loadedActiveSessionId);
     }
 
+    if (loadedProviderId !== storedProviderId) saveActiveProviderId(loadedProviderId);
+    if (!storedModelId) saveActiveModelId(loadedModelId);
     clientSnapshot = {
       providers: loadedProviders,
       activeProviderId: loadedProviderId,
