@@ -1,7 +1,7 @@
 'use client';
 
 
-import React, { useState, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, useSyncExternalStore } from 'react';
 import { 
   Menu, 
   Plus, 
