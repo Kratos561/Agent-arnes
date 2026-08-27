@@ -27,12 +27,13 @@ export const StreamRenderer: React.FC<StreamRendererProps> = ({
   useEffect(() => {
     if (!isStreaming) {
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      setDebouncedContent(content);
       return;
     }
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     debounceTimerRef.current = setTimeout(() => {
       setDebouncedContent(content);
-    }, 40);
+    }, 24);
     return () => {
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     };

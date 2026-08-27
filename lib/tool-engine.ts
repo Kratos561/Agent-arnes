@@ -579,5 +579,355 @@ export function generateUUIDs(count: number, uppercase = false): string[] {
 }
 
 function truncate(s: string, n: number): string {
-  return s.length > n ? `${s.slice(0, n)}…` : s;
+  return s.length > n ? `${s.slice(0, n)}\u2026` : s;
+}
+
+// ============================================================================
+// 8) Web Search (DuckDuckGo Instant Answer API - free, no key)
+// ============================================================================
+
+export interface SearchResult {
+  heading: string;
+  abstract: string;
+  abstractSource: string;
+  abstractURL: string;
+  answer: string;
+  answerType: string;
+  relatedTopics: Array<{ text: string; FirstURL: string }>;
+  infobox: string;
+}
+
+export async function webSearch(query: string): Promise<string> {
+  try {
+    const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
+    const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!resp.ok) return `Error HTTP ${resp.status} al buscar "${query}"`;
+    const data: SearchResult = await resp.json();
+
+    const parts: string[] = [];
+    parts.push(`## Resultados para: "${query}"\n`);
+
+    if (data.Abstract) {
+      parts.push(`### ${data.heading || data.AbstractSource || 'Resultado'}`);
+      parts.push(data.Abstract);
+      if (data.abstractURL) parts.push(`Fuente: ${data.abstractURL}`);
+      parts.push('');
+    }
+
+    if (data.Answer) {
+      parts.push(`### Respuesta directa`);
+      parts.push(data.Answer);
+      parts.push('');
+    }
+
+    if (data.RelatedTopics && data.RelatedTopics.length > 0) {
+      parts.push(`### Temas relacionados`);
+      for (const t of data.RelatedTopics.slice(0, 8)) {
+        if (t.Text) {
+          parts.push(`- ${t.Text}`);
+          if (t.FirstURL) parts.push(`  ${t.FirstURL}`);
+        }
+      }
+      parts.push('');
+    }
+
+    if (data.infobox) {
+      parts.push(`### Informacion`);
+      parts.push(data.infobox);
+    }
+
+    if (parts.length === 1) {
+      parts.push(`No se encontraron resultados instantaneos para "${query}".`);
+      parts.push(`Intenta con una consulta mas especifica.`);
+    }
+
+    return parts.join('\n');
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Error desconocido';
+    return `Error al buscar "${query}": ${msg}`;
+  }
+}
+
+// ============================================================================
+// 9) Document Generation (CSV, JSON, HTML, PDF, Excel)
+// ============================================================================
+
+export function downloadFile(content: string, filename: string, mimeType: string) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+export function generateCSV(headers: string[], rows: string[][]): string {
+  const esc = (v: string) => {
+    if (/[",\n\r]/.test(v)) return `"${v.replace(/"/g, '""')}"`;
+    return v;
+  };
+  const lines = [headers.map(esc).join(',')];
+  for (const row of rows) lines.push(row.map(esc).join(','));
+  return lines.join('\n');
+}
+
+export function generateHTMLTable(title: string, headers: string[], rows: string[][]): string {
+  return `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>${title}</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 2rem; color: #1a1a1a; }
+  h1 { font-size: 1.5rem; border-bottom: 2px solid #e5e7eb; padding-bottom: 0.5rem; }
+  table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
+  th, td { border: 1px solid #d1d5db; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f3f4f6; font-weight: 600; }
+  tr:nth-child(even) { background: #f9fafb; }
+  .meta { color: #6b7280; font-size: 0.8rem; margin-top: 1rem; }
+</style>
+</head>
+<body>
+<h1>${title}</h1>
+<table>
+<thead><tr>${headers.map((h) => `<th>${h}</th>`).join('')}</tr></thead>
+<tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody>
+</table>
+<p class="meta">Generado por Agent Arnes - ${new Date().toLocaleString('es-ES')}</p>
+</body>
+</html>`;
+}
+
+export function generatePDFContent(title: string, headers: string[], rows: string[][]): string {
+  // Returns HTML that can be printed to PDF via window.print()
+  return generateHTMLTable(title, headers, rows);
+}
+
+/**
+ * Download as Excel using SheetJS CDN (loaded dynamically).
+ * Falls back to CSV if CDN unavailable.
+ */
+export async function downloadAsExcel(
+  title: string,
+  headers: string[],
+  rows: string[][],
+  filename: string
+): Promise<void> {
+  try {
+    // Dynamic import of SheetJS from CDN
+    if (!(window as any).XLSX) {
+      await loadScript('https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js');
+    }
+    const XLSX = (window as any).XLSX;
+    if (!XLSX) throw new Error('SheetJS not loaded');
+
+    const data = rows.map((r) => {
+      const obj: Record<string, string> = {};
+      headers.forEach((h, i) => { obj[h] = r[i] || ''; });
+      return obj;
+    });
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, title.slice(0, 31));
+    XLSX.writeFile(wb, filename);
+  } catch {
+    // Fallback to CSV
+    const csv = generateCSV(headers, rows);
+    downloadFile(csv, filename.replace(/\.xlsx$/, '.csv'), 'text/csv');
+  }
+}
+
+function loadScript(src: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error('Failed to load ' + src));
+    document.head.appendChild(s);
+  });
+}
+
+// ============================================================================
+// 10) Chart Generation (Canvas-based, zero dependencies)
+// ============================================================================
+
+export type ChartType = 'bar' | 'line' | 'pie' | 'doughnut';
+
+export interface ChartData {
+  labels: string[];
+  datasets: Array<{
+    label: string;
+    data: number[];
+    color?: string;
+  }>;
+}
+
+const CHART_COLORS = [
+  '#6366f1', '#8b5cf6', '#a855f7', '#d946ef',
+  '#ec4899', '#f43f5e', '#f97316', '#eab308',
+  '#22c55e', '#14b8a6', '#06b6d4', '#3b82f6',
+];
+
+export function renderChart(
+  canvas: HTMLCanvasElement,
+  type: ChartType,
+  data: ChartData,
+  options?: { width?: number; height?: number; dark?: boolean }
+): void {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  const w = options?.width || canvas.parentElement?.clientWidth || 600;
+  const h = options?.height || 300;
+  const dark = options?.dark ?? false;
+  canvas.width = w * 2;
+  canvas.height = h * 2;
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
+  ctx.scale(2, 2);
+
+  // Background
+  ctx.fillStyle = dark ? '#1e1e1e' : '#ffffff';
+  ctx.fillRect(0, 0, w, h);
+
+  const textColor = dark ? '#d1d5db' : '#374151';
+  const gridColor = dark ? '#374151' : '#e5e7eb';
+
+  if (type === 'pie' || type === 'doughnut') {
+    drawPie(ctx, data, w, h, dark);
+    return;
+  }
+
+  // Calculate bounds
+  const padding = { top: 30, right: 20, bottom: 50, left: 60 };
+  const chartW = w - padding.left - padding.right;
+  const chartH = h - padding.top - padding.bottom;
+
+  // Find max value
+  const allValues = data.datasets.flatMap((ds) => ds.data);
+  const maxVal = Math.max(...allValues, 1);
+  const niceMax = Math.ceil(maxVal / Math.pow(10, Math.floor(Math.log10(maxVal)))) * Math.pow(10, Math.floor(Math.log10(maxVal)));
+  const yMax = niceMax || 1;
+
+  // Draw grid
+  ctx.strokeStyle = gridColor;
+  ctx.lineWidth = 0.5;
+  ctx.fillStyle = textColor;
+  ctx.font = '11px -apple-system, sans-serif';
+  ctx.textAlign = 'right';
+  for (let i = 0; i <= 5; i++) {
+    const y = padding.top + chartH - (chartH * i) / 5;
+    const val = (yMax * i) / 5;
+    ctx.beginPath();
+    ctx.moveTo(padding.left, y);
+    ctx.lineTo(w - padding.right, y);
+    ctx.stroke();
+    ctx.fillText(Math.round(val).toLocaleString(), padding.left - 8, y + 4);
+  }
+
+  // Draw labels
+  ctx.textAlign = 'center';
+  const barGroupWidth = chartW / data.labels.length;
+  data.labels.forEach((label, i) => {
+    const x = padding.left + barGroupWidth * i + barGroupWidth / 2;
+    ctx.fillText(label.length > 10 ? label.slice(0, 10) + '..' : label, x, h - padding.bottom + 18);
+  });
+
+  // Draw data
+  if (type === 'bar') {
+    const groupW = barGroupWidth * 0.7 / data.datasets.length;
+    data.datasets.forEach((ds, dsIdx) => {
+      ctx.fillStyle = ds.color || CHART_COLORS[dsIdx % CHART_COLORS.length];
+      ds.data.forEach((val, i) => {
+        const barH = (val / yMax) * chartH;
+        const x = padding.left + barGroupWidth * i + barGroupWidth * 0.15 + groupW * dsIdx;
+        const y = padding.top + chartH - barH;
+        ctx.beginPath();
+        ctx.roundRect(x, y, groupW - 2, barH, [3, 3, 0, 0]);
+        ctx.fill();
+      });
+    });
+  } else if (type === 'line') {
+    data.datasets.forEach((ds, dsIdx) => {
+      const color = ds.color || CHART_COLORS[dsIdx % CHART_COLORS.length];
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ds.data.forEach((val, i) => {
+        const x = padding.left + barGroupWidth * i + barGroupWidth / 2;
+        const y = padding.top + chartH - (val / yMax) * chartH;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+
+      // Draw points
+      ctx.fillStyle = color;
+      ds.data.forEach((val, i) => {
+        const x = padding.left + barGroupWidth * i + barGroupWidth / 2;
+        const y = padding.top + chartH - (val / yMax) * chartH;
+        ctx.beginPath();
+        ctx.arc(x, y, 4, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    });
+  }
+
+  // Legend
+  if (data.datasets.length > 1) {
+    ctx.font = '11px -apple-system, sans-serif';
+    ctx.textAlign = 'left';
+    let lx = padding.left;
+    data.datasets.forEach((ds, i) => {
+      ctx.fillStyle = ds.color || CHART_COLORS[i % CHART_COLORS.length];
+      ctx.fillRect(lx, 8, 12, 12);
+      ctx.fillStyle = textColor;
+      ctx.fillText(ds.label, lx + 16, 18);
+      lx += ctx.measureText(ds.label).width + 32;
+    });
+  }
+}
+
+function drawPie(
+  ctx: CanvasRenderingContext2D,
+  data: ChartData,
+  w: number,
+  h: number,
+  dark: boolean
+): void {
+  const total = data.datasets[0]?.data.reduce((a, b) => a + b, 0) || 1;
+  const cx = w / 2;
+  const cy = h / 2;
+  const radius = Math.min(cx, cy) - 40;
+  const isDoughnut = data.datasets.length > 0 && (data.datasets[0] as any).doughnut;
+  const innerRadius = isDoughnut ? radius * 0.5 : 0;
+
+  let startAngle = -Math.PI / 2;
+  data.labels.forEach((label, i) => {
+    const val = data.datasets[0]?.data[i] || 0;
+    const sliceAngle = (val / total) * Math.PI * 2;
+    ctx.fillStyle = CHART_COLORS[i % CHART_COLORS.length];
+    ctx.beginPath();
+    ctx.moveTo(cx + innerRadius * Math.cos(startAngle), cy + innerRadius * Math.sin(startAngle));
+    ctx.arc(cx, cy, radius, startAngle, startAngle + sliceAngle);
+    ctx.arc(cx, cy, innerRadius, startAngle + sliceAngle, startAngle, true);
+    ctx.closePath();
+    ctx.fill();
+
+    // Label
+    const midAngle = startAngle + sliceAngle / 2;
+    const lx = cx + (radius + 20) * Math.cos(midAngle);
+    const ly = cy + (radius + 20) * Math.sin(midAngle);
+    ctx.fillStyle = dark ? '#d1d5db' : '#374151';
+    ctx.font = '11px -apple-system, sans-serif';
+    ctx.textAlign = midAngle > Math.PI / 2 && midAngle < Math.PI * 1.5 ? 'right' : 'left';
+    const pct = Math.round((val / total) * 100);
+    if (pct > 3) ctx.fillText(`${label} (${pct}%)`, lx, ly);
+
+    startAngle += sliceAngle;
+  });
 }

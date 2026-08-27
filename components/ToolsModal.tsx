@@ -9,11 +9,14 @@ import {
   Database,
   FileCode2,
   FileSpreadsheet,
+  FileText,
   Fingerprint,
+  Globe,
   Hash,
   KeyRound,
   Link,
   Regex,
+  Search,
   ShieldCheck,
   Sigma,
   Wrench,
@@ -28,6 +31,11 @@ import {
   csvToJSON,
   jsonToCSV,
   generateUUIDs,
+  webSearch,
+  generateCSV,
+  generateHTMLTable,
+  downloadFile,
+  downloadAsExcel,
 } from '@/lib/tool-engine';
 
 type ToolId =
@@ -45,7 +53,12 @@ type ToolId =
   | 'timestamp'
   | 'uuid'
   | 'jwt'
-  | 'csv-json';
+  | 'csv-json'
+  | 'web-search'
+  | 'export-csv'
+  | 'export-excel'
+  | 'export-html'
+  | 'export-json';
 
 interface ToolDef {
   id: ToolId;
@@ -55,18 +68,23 @@ interface ToolDef {
 }
 
 const tools: ToolDef[] = [
+  { id: 'web-search', label: 'Buscar Web', description: 'Busca en DuckDuckGo (gratis, sin API key)', icon: Globe },
   { id: 'json', label: 'JSON', description: 'Valida y formatea JSON', icon: Braces },
   { id: 'sql', label: 'SQL', description: 'Mini motor relacional en memoria', icon: Database },
-  { id: 'regex', label: 'RegEx', description: 'Prueba una expresión regular', icon: Regex },
-  { id: 'diff', label: 'Diff', description: 'Compara dos textos (líneas)', icon: FileCode2 },
-  { id: 'math', label: 'Fórmulas', description: 'Evaluador matemático seguro', icon: Sigma },
-  { id: 'csv-json', label: 'CSV ↔ JSON', description: 'Convierte entre formatos', icon: FileSpreadsheet },
-  { id: 'base64-encode', label: 'Base64 →', description: 'Codifica texto UTF-8', icon: FileCode2 },
-  { id: 'base64-decode', label: 'Base64 ←', description: 'Decodifica texto UTF-8', icon: FileCode2 },
-  { id: 'url-encode', label: 'URL →', description: 'Escapa una URL o parámetro', icon: Link },
-  { id: 'url-decode', label: 'URL ←', description: 'Restaura texto escapado', icon: Link },
+  { id: 'regex', label: 'RegEx', description: 'Prueba una expresion regular', icon: Regex },
+  { id: 'diff', label: 'Diff', description: 'Compara dos textos (lineas)', icon: FileCode2 },
+  { id: 'math', label: 'Formulas', description: 'Evaluador matematico seguro', icon: Sigma },
+  { id: 'csv-json', label: 'CSV <-> JSON', description: 'Convierte entre formatos', icon: FileSpreadsheet },
+  { id: 'export-csv', label: 'Exportar CSV', description: 'Descarga datos como .csv', icon: FileSpreadsheet },
+  { id: 'export-excel', label: 'Exportar Excel', description: 'Descarga como .xlsx', icon: FileSpreadsheet },
+  { id: 'export-html', label: 'Exportar HTML', description: 'Tabla HTML estilizada', icon: FileText },
+  { id: 'export-json', label: 'Exportar JSON', description: 'Descarga como .json', icon: Braces },
+  { id: 'base64-encode', label: 'Base64 ->', description: 'Codifica texto UTF-8', icon: FileCode2 },
+  { id: 'base64-decode', label: 'Base64 <-', description: 'Decodifica texto UTF-8', icon: FileCode2 },
+  { id: 'url-encode', label: 'URL ->', description: 'Escapa una URL o parametro', icon: Link },
+  { id: 'url-decode', label: 'URL <-', description: 'Restaura texto escapado', icon: Link },
   { id: 'sha256', label: 'SHA-256', description: 'Calcula un hash local', icon: ShieldCheck },
-  { id: 'tokens', label: 'Tokens', description: 'Estimación rápida del texto', icon: Hash },
+  { id: 'tokens', label: 'Tokens', description: 'Estimacion rapida del texto', icon: Hash },
   { id: 'uuid', label: 'UUID', description: 'Genera identificadores v4', icon: Fingerprint },
   { id: 'jwt', label: 'JWT', description: 'Decodifica header y payload', icon: KeyRound },
   { id: 'timestamp', label: 'Hora', description: 'Marca de tiempo ISO local', icon: Clock3 },
@@ -90,7 +108,7 @@ const EXAMPLES: Partial<Record<ToolId, Record<string, string>>> = {
   },
   sql: {
     input:
-      'CREATE TABLE empleados(nombre TEXT, edad INT, dept TEXT);\nINSERT INTO empleados VALUES ("Ana", 30, "IT");\nINSERT INTO empleados VALUES ("Luis", 42, "Finanzas");\nINSERT INTO empleados VALUES ("Sofía", 25, "IT");\nSELECT * FROM empleados WHERE dept = \'IT\' ORDER BY edad DESC;',
+      'CREATE TABLE empleados(nombre TEXT, edad INT, dept TEXT);\nINSERT INTO empleados VALUES ("Ana", 30, "IT");\nINSERT INTO empleados VALUES ("Luis", 42, "Finanzas");\nINSERT INTO empleados VALUES ("Sofia", 25, "IT");\nSELECT * FROM empleados WHERE dept = \'IT\' ORDER BY edad DESC;',
   },
   regex: {
     pattern: '\\b\\w+@\\w+\\.\\w+\\b',
@@ -98,14 +116,30 @@ const EXAMPLES: Partial<Record<ToolId, Record<string, string>>> = {
     input: 'Contacta a ana@correo.com o a luis@mail.es hoy.',
   },
   diff: {
-    a: 'hola mundo\nprimera línea\nfin',
-    b: 'hola mundo\nprimera línea modificada\nnueva línea\nfin',
+    a: 'hola mundo\nprimera linea\nfin',
+    b: 'hola mundo\nprimera linea modificada\nnueva linea\nfin',
   },
   math: {
     input: '(2 + 3) * 4 ^ 2 - sqrt(144) + min(10, 20, 5)',
   },
   'csv-json': {
-    input: 'nombre,edad,ciudad\nAna,30,Madrid\nLuis,42,Sevilla\nSofía,25,Valencia',
+    input: 'nombre,edad,ciudad\nAna,30,Madrid\nLuis,42,Sevilla\nSofia,25,Valencia',
+  },
+  'web-search': {
+    input: 'Python 3.12 new features',
+  },
+  'export-csv': {
+    input: '[{"nombre":"Ana","edad":30,"ciudad":"Madrid"},{"nombre":"Luis","edad":42,"ciudad":"Sevilla"}]',
+  },
+  'export-excel': {
+    input: '[{"producto":"Laptop","precio":999,"stock":15},{"producto":"Mouse","precio":25,"stock":150}]',
+  },
+  'export-html': {
+    input: '[{"nombre":"Ana","edad":30,"dept":"IT"},{"nombre":"Luis","edad":42,"dept":"Finanzas"}]',
+    extra: 'Reporte de Empleados',
+  },
+  'export-json': {
+    input: '[{"id":1,"nombre":"Ana","activo":true},{"id":2,"nombre":"Luis","activo":false}]',
   },
   uuid: {
     uuid: '5',
@@ -149,12 +183,19 @@ export const ToolsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
     setOutput('');
     try {
       switch (selected) {
+        case 'web-search': {
+          if (!input.trim()) throw new Error('Escribe un termino de busqueda');
+          setOutput('Buscando...');
+          const results = await webSearch(input.trim());
+          setOutput(results);
+          break;
+        }
         case 'json':
           setOutput(JSON.stringify(JSON.parse(input), null, 2));
           break;
         case 'math': {
           const res = evaluateMath(input);
-          if (!res.ok) throw new Error(res.error || 'Expresión inválida');
+          if (!res.ok) throw new Error(res.error || 'Expresion invalida');
           setOutput(`Resultado: ${res.value}`);
           break;
         }
@@ -177,6 +218,45 @@ export const ToolsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
           }
           break;
         }
+        case 'export-csv': {
+          const data = JSON.parse(input);
+          const arr = Array.isArray(data) ? data : [data];
+          if (arr.length === 0) throw new Error('Array vacio');
+          const headers = Object.keys(arr[0]);
+          const rows = arr.map((o: Record<string, unknown>) => headers.map((h) => String(o[h] ?? '')));
+          const csv = generateCSV(headers, rows);
+          downloadFile(csv, 'datos.csv', 'text/csv');
+          setOutput('CSV descargado: datos.csv');
+          break;
+        }
+        case 'export-excel': {
+          const data2 = JSON.parse(input);
+          const arr2 = Array.isArray(data2) ? data2 : [data2];
+          if (arr2.length === 0) throw new Error('Array vacio');
+          const headers2 = Object.keys(arr2[0]);
+          const rows2 = arr2.map((o: Record<string, unknown>) => headers2.map((h) => String(o[h] ?? '')));
+          await downloadAsExcel('Datos', headers2, rows2, 'datos.xlsx');
+          setOutput('Excel descargado: datos.xlsx');
+          break;
+        }
+        case 'export-html': {
+          const data3 = JSON.parse(input);
+          const arr3 = Array.isArray(data3) ? data3 : [data3];
+          if (arr3.length === 0) throw new Error('Array vacio');
+          const headers3 = Object.keys(arr3[0]);
+          const rows3 = arr3.map((o: Record<string, unknown>) => headers3.map((h) => String(o[h] ?? '')));
+          const html = generateHTMLTable(extra || 'Datos', headers3, rows3);
+          downloadFile(html, 'datos.html', 'text/html');
+          setOutput('HTML descargado: datos.html\nAbre en navegador para ver la tabla estilizada.');
+          break;
+        }
+        case 'export-json': {
+          const parsed = JSON.parse(input);
+          const formatted = JSON.stringify(parsed, null, 2);
+          downloadFile(formatted, 'datos.json', 'application/json');
+          setOutput('JSON descargado: datos.json');
+          break;
+        }
         case 'base64-encode': setOutput(utf8ToBase64(input)); break;
         case 'base64-decode': setOutput(base64ToUtf8(input)); break;
         case 'url-encode': setOutput(encodeURIComponent(input)); break;
@@ -187,7 +267,7 @@ export const ToolsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
           break;
         }
         case 'tokens':
-          setOutput(`≈ ${Math.ceil(input.trim().length / 4)} tokens\n${input.length} caracteres\n${input.trim() ? input.trim().split(/\s+/).length : 0} palabras`);
+          setOutput(`~ ${Math.ceil(input.trim().length / 4)} tokens\n${input.length} caracteres\n${input.trim() ? input.trim().split(/\s+/).length : 0} palabras`);
           break;
         case 'uuid': {
           const count = Math.min(50, Math.max(1, parseInt(extra || '1', 10) || 1));
@@ -212,7 +292,9 @@ export const ToolsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
   const hasPrimary = selected === 'json' || selected === 'sql' || selected === 'regex' || selected === 'diff'
     || selected === 'math' || selected === 'csv-json' || selected === 'base64-encode'
     || selected === 'base64-decode' || selected === 'url-encode' || selected === 'url-decode'
-    || selected === 'sha256' || selected === 'tokens' || selected === 'jwt';
+    || selected === 'sha256' || selected === 'tokens' || selected === 'jwt'
+    || selected === 'web-search' || selected === 'export-csv' || selected === 'export-excel'
+    || selected === 'export-html' || selected === 'export-json';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -286,7 +368,11 @@ export const ToolsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
               <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Pega o escribe el contenido…"
+                placeholder={
+                  selected === 'web-search' ? 'Termino de busqueda (ej: Python 3.12 features)...' :
+                  selected.startsWith('export-') ? '[{"clave": "valor"}, ...] (JSON array)' :
+                  'Pega o escribe el contenido...'
+                }
                 rows={selected === 'sql' ? 10 : 8}
                 className="w-full resize-y rounded-xl border border-neutral-200 dark:border-neutral-700 bg-transparent p-3 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-accent/50"
               />
@@ -310,6 +396,15 @@ export const ToolsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
                 onChange={(e) => setExtra(e.target.value)}
                 placeholder="Delimitador (default ,)"
                 className="w-40 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-transparent p-3 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-accent/50"
+              />
+            )}
+
+            {selected === 'export-html' && (
+              <input
+                value={extra}
+                onChange={(e) => setExtra(e.target.value)}
+                placeholder="Titulo del documento"
+                className="w-full rounded-xl border border-neutral-200 dark:border-neutral-700 bg-transparent p-3 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-accent/50"
               />
             )}
 

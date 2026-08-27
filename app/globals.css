@@ -310,26 +310,28 @@
 
 /* ===== THINKING PANEL — DeepSeek "Glass Box" Style ===== */
 .thinking-panel {
-  margin: 0.5em 0;
-  border-radius: 12px;
+  margin: 0.75em 0;
+  border-radius: 14px;
   overflow: hidden;
   border: 1px solid var(--thinking-border);
   background: var(--thinking-bg);
-  transition: all 0.2s ease;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  backdrop-filter: blur(8px);
 }
 
 .thinking-panel:hover {
   border-color: var(--accent-soft-border);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
 }
 
 .thinking-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
+  padding: 11px 16px;
   cursor: pointer;
   user-select: none;
-  transition: background 0.15s ease;
+  transition: background 0.2s ease;
 }
 
 .thinking-header:hover {
@@ -339,37 +341,39 @@
 .thinking-header-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   font-size: 13px;
   font-weight: 600;
   color: var(--text-secondary);
 }
 
 .thinking-icon {
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 5px;
-  background: var(--accent-soft);
+  border-radius: 7px;
+  background: linear-gradient(135deg, var(--accent-soft), transparent);
   color: var(--accent);
+  transition: all 0.3s ease;
 }
 
 .thinking-icon.active {
-  animation: thinking-pulse 1.5s ease-in-out infinite;
+  animation: thinking-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  box-shadow: 0 0 0 3px rgba(77, 150, 255, 0.15);
 }
 
 @keyframes thinking-pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.7; transform: scale(1.05); }
+  0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 0 3px rgba(77, 150, 255, 0.15); }
+  50% { opacity: 0.85; transform: scale(1.08); box-shadow: 0 0 0 6px rgba(77, 150, 255, 0.08); }
 }
 
 .thinking-chevron {
   width: 16px;
   height: 16px;
   color: var(--text-secondary);
-  transition: transform 0.2s ease;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .thinking-chevron.open {
@@ -377,56 +381,139 @@
 }
 
 .thinking-body {
-  padding: 12px 14px;
+  padding: 14px 16px;
   border-top: 1px solid var(--thinking-border);
   font-size: 13px;
-  line-height: 1.65;
+  line-height: 1.7;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   color: var(--text-secondary);
   white-space: pre-wrap;
   word-break: break-word;
-  max-height: 320px;
+  max-height: 360px;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-color) transparent;
+}
+
+.thinking-body::-webkit-scrollbar {
+  width: 4px;
+}
+
+.thinking-body::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 4px;
 }
 
 /* Thinking dots animation */
 .thinking-dots {
   display: inline-flex;
-  gap: 3px;
-  margin-left: 6px;
+  gap: 4px;
+  margin-left: 8px;
 }
 
 .thinking-dots span {
-  width: 4px;
-  height: 4px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: var(--accent);
-  animation: thinking-dot 1.2s ease-in-out infinite;
+  animation: thinking-dot 1.4s ease-in-out infinite;
 }
 
-.thinking-dots span:nth-child(2) { animation-delay: 0.15s; }
-.thinking-dots span:nth-child(3) { animation-delay: 0.3s; }
+.thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+.thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
 
 @keyframes thinking-dot {
-  0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
-  40% { opacity: 1; transform: scale(1.1); }
+  0%, 80%, 100% { opacity: 0.3; transform: scale(0.75); }
+  40% { opacity: 1; transform: scale(1.2); }
+}
+
+/* Thinking shimmer */
+.thinking-shimmer {
+  background: linear-gradient(90deg, var(--thinking-border) 25%, var(--accent-soft) 50%, var(--thinking-border) 75%);
+  background-size: 200% 100%;
+  animation: thinking-shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes thinking-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
 /* ===== TYPING CURSOR ===== */
 @keyframes blink {
   0%, 100% { opacity: 1; transform: scaleY(1); }
-  50% { opacity: 0.2; transform: scaleY(0.65); }
+  50% { opacity: 0.15; transform: scaleY(0.6); }
 }
 
 .typing-cursor {
   display: inline-block;
-  width: 7px;
-  height: 1.1em;
+  width: 8px;
+  height: 1.15em;
   border-radius: 9999px;
   background: linear-gradient(180deg, var(--accent), var(--accent-hover));
   margin-left: 2px;
   vertical-align: text-bottom;
-  animation: blink 0.85s ease-in-out infinite;
+  animation: blink 0.9s ease-in-out infinite;
+  box-shadow: 0 0 6px rgba(77, 150, 255, 0.3);
+}
+
+/* ===== MESSAGE ENTER ANIMATION ===== */
+@keyframes msg-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.msg-enter {
+  animation: msg-enter 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* ===== STREAMING INDICATOR ===== */
+@keyframes stream-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+.streaming-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  background: var(--accent-soft);
+  font-size: 11px;
+  color: var(--accent);
+  animation: stream-pulse 1.5s ease-in-out infinite;
+}
+
+/* ===== DOCUMENT VIEWER OVERLAY ===== */
+.doc-viewer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  animation: fade-in 0.2s ease;
+}
+
+.doc-viewer-container {
+  width: 90vw;
+  height: 85vh;
+  max-width: 1200px;
+  background: white;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
   box-shadow: 0 0 10px var(--accent-soft), 0 0 3px var(--accent);
 }
 

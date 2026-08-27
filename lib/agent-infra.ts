@@ -327,10 +327,14 @@ export function assemblePrompt(ctx: AssembleContext): string {
     order: 150,
     text: [
       '## Directrices de Uso de Herramientas',
-      '- Utiliza la suite de herramientas del navegador para ejecutar código, transformar datos y realizar cálculos.',
-      '- Cuando generes código en bloques ```language, asegúrate de que sea completo y ejecutable.',
-      '- Para tareas complejas, descompón el problema y ejecuta pasos secuenciales.',
+      '- Tienes acceso a busqueda web en tiempo real via DuckDuckGo. Cuando el usuario pida informacion actualizada, busca en la web.',
+      '- Puedes generar documentos: CSV, Excel (.xlsx), HTML y PDF desde el navegador.',
+      '- Puedes renderizar graficas: barras, lineas, pie/doughnut directamente en el chat.',
+      '- Cuando generes codigo en bloques ```language, asegurate de que sea completo y ejecutable.',
+      '- Para tareas complejas, descompone el problema y ejecuta pasos secuenciales.',
       '- Si una herramienta falla, analiza el error y adapta tu enfoque.',
+      '- Para datos tabulares, sugiere al usuario exportar como CSV o Excel.',
+      '- Para visualizaciones, genera el codigo Chart.js o sugiere usar la herramienta de graficas.',
     ].join('\n'),
   });
 
