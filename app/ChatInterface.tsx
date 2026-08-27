@@ -13,6 +13,7 @@ import {
   Wrench,
   Shield,
   Sparkles,
+  LogOut,
 } from 'lucide-react';
 import { 
   ProviderConfig, 
@@ -44,6 +45,7 @@ import {
 import { createId, getCurrentTimestamp } from '@/lib/utils';
 import { sendChatMessageStream } from '@/lib/api-client';
 import { parseAskBlocks } from '@/lib/agent-protocol';
+import { processToolBlocks, hasToolBlocks } from '@/lib/tool-interceptor';
 import { windowSizeForContextLength } from '@/lib/compaction';
 import { estimateTokenCount } from '@/lib/context-manager';
 import { Sidebar } from '@/components/Sidebar';
@@ -59,8 +61,28 @@ import { ToolsModal } from '@/components/ToolsModal';
 import { RulesModal } from '@/components/RulesModal';
 import { SkillsModal } from '@/components/SkillsModal';
 import { SafeErrorBoundary } from '@/components/SafeErrorBoundary';
+import { AuthScreen } from '@/components/AuthScreen';
 
 export default function Home() {
+  // Auth state
+  const [authEmail, setAuthEmail] = useState<string | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+
+  // Check for existing session on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const { getCurrentUser } = await import('@/lib/supabase');
+        const user = await getCurrentUser();
+        if (user) {
+          setAuthEmail(user.email);
+        }
+      } catch {
+        // Ignore
+      }
+      setAuthChecked(true);
+    })();
+  }, []);
   // Hydration-safe reactive store from LocalStorage
   const appState = useSyncExternalStore(
     subscribeAppStore,
@@ -466,11 +488,22 @@ export default function Home() {
             });
             saveSessions(liveUpdated);
           },
-          onDone: (finalContent, finalReasoning, tokens, finishReason) => {
+          onDone: async (finalContent, finalReasoning, tokens, finishReason) => {
             setIsGenerating(false);
             abortControllerRef.current = null;
             const doneTimestamp = getCurrentTimestamp();
-            const combined = finalContent || accumulatedContent;
+            let combined = finalContent || accumulatedContent;
+
+            // Process :::tool blocks silently — execute searches, render charts
+            if (hasToolBlocks(combined)) {
+              try {
+                const { cleanText } = await processToolBlocks(combined);
+                combined = cleanText;
+              } catch (e) {
+                // If tool processing fails, keep original content
+                console.warn('Tool interceptor error:', e);
+              }
+            }
 
             // Parsear bloques "ask" del modelo: separar el texto visible de las preguntas pendientes
             const { asks, text: visibleContent } = parseAskBlocks(combined);
@@ -801,6 +834,19 @@ export default function Home() {
     return { used, window, percent: Math.min(100, Math.round((used / window) * 100)) };
   }, [activeSession, activeCachedModels]);
 
+  // Auth gate — show login screen if not authenticated
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-[#0a0a0a]">
+        <div className="w-6 h-6 border-2 border-neutral-300 dark:border-neutral-600 border-t-blue-500 rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!authEmail) {
+    return <AuthScreen onAuthenticated={(email) => setAuthEmail(email)} />;
+  }
+
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-white dark:bg-[#232323] text-neutral-900 dark:text-neutral-100 font-sans antialiased">
       {/* Sidebar Component */}
@@ -965,6 +1011,22 @@ export default function Home() {
             >
               <Settings className="w-4 h-4" />
             </button>
+
+            {/* Logout Button */}
+            {authEmail && authEmail !== 'local' && (
+              <button
+                type="button"
+                onClick={async () => {
+                  const { signOut } = await import('@/lib/supabase');
+                  await signOut();
+                  setAuthEmail(null);
+                }}
+                title="Cerrar sesion"
+                className="flex-shrink-0 p-2 rounded-xl text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </header>
 

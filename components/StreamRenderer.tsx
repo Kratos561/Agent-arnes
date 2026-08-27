@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -11,6 +11,7 @@ import { SafeKaTeX } from '@/components/SafeKaTeX';
 import { ArtifactViewer, CodeArtifactFile } from '@/components/ArtifactViewer';
 import hljs from 'highlight.js';
 import { Check, Copy } from 'lucide-react';
+import { renderChart, ChartData, ChartType } from '@/lib/tool-engine';
 
 interface StreamRendererProps {
   content: string;
@@ -59,6 +60,35 @@ export const StreamRenderer: React.FC<StreamRendererProps> = ({
     return matches.length >= 2 ? matches : null;
   }, [content, isStreaming]);
 
+  // Detect :::chart blocks and split content for inline rendering
+  const { parts, charts } = useMemo(() => {
+    if (isStreaming) return { parts: [sanitizedContent], charts: [] };
+    const chartRegex = /:::chart\n([\s\S]*?)\n:::/g;
+    const chartParts: Array<{ index: number; data: ChartData; chartType: ChartType; title?: string; subtitle?: string }> = [];
+    const segments: string[] = [];
+    let lastIdx = 0;
+    let m: RegExpExecArray | null;
+
+    while ((m = chartRegex.exec(sanitizedContent)) !== null) {
+      segments.push(sanitizedContent.slice(lastIdx, m.index));
+      try {
+        const parsed = JSON.parse(m[1]);
+        chartParts.push({
+          index: segments.length,
+          data: { labels: parsed.labels || [], datasets: parsed.datasets || [] },
+          chartType: parsed.type || 'bar',
+          title: parsed.title,
+          subtitle: parsed.subtitle,
+        });
+      } catch {
+        segments.push(m[0]);
+      }
+      lastIdx = m.index + m[0].length;
+    }
+    segments.push(sanitizedContent.slice(lastIdx));
+    return { parts: segments, charts: chartParts };
+  }, [sanitizedContent, isStreaming]);
+
   return (
     <SafeErrorBoundary fallbackText="Error al renderizar el formato Markdown.">
       <div className="stream-renderer w-full">
@@ -68,10 +98,13 @@ export const StreamRenderer: React.FC<StreamRendererProps> = ({
           </div>
         )}
 
-        <ReactMarkdown
-          remarkPlugins={[remarkGfm, remarkMath]}
-          rehypePlugins={[rehypeKatex]}
-          components={{
+        {parts.map((part, i) => (
+          <React.Fragment key={i}>
+            {part && (
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm, remarkMath]}
+                rehypePlugins={[rehypeKatex]}
+                components={{
             code({ node, inline, className, children, ...props }: any) {
               const match = /language-(\w+)/.exec(className || '');
               const codeString = String(children).replace(/\n$/, '');
@@ -154,10 +187,15 @@ export const StreamRenderer: React.FC<StreamRendererProps> = ({
                 </h3>
               );
             },
-          }}
-        >
-          {sanitizedContent}
-        </ReactMarkdown>
+              }}
+            >
+              {part}
+            </ReactMarkdown>
+            {charts.filter((c) => c.index === i + 1).map((chart, ci) => (
+              <InlineChart key={ci} data={chart.data} type={chart.chartType} title={chart.title} subtitle={chart.subtitle} />
+            ))}
+          </React.Fragment>
+        ))}
       </div>
     </SafeErrorBoundary>
   );
@@ -237,6 +275,43 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ language, value }) => {
             className="hljs"
           />
         </pre>
+      </div>
+    </div>
+  );
+};
+
+/* ===== Inline Chart Component ===== */
+interface InlineChartProps {
+  data: ChartData;
+  type: ChartType;
+  title?: string;
+  subtitle?: string;
+}
+
+const InlineChart: React.FC<InlineChartProps> = ({ data, type, title, subtitle }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!canvasRef.current || !containerRef.current) return;
+    const isDark = document.documentElement.classList.contains('dark');
+    renderChart(canvasRef.current, type, data, {
+      width: containerRef.current.clientWidth,
+      height: 340,
+      dark: isDark,
+    });
+  }, [data, type]);
+
+  return (
+    <div className="my-4 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-[#1e1e1e] overflow-hidden shadow-sm">
+      {(title || subtitle) && (
+        <div className="px-5 pt-4 pb-2">
+          {title && <h4 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{title}</h4>}
+          {subtitle && <p className="text-[11px] text-neutral-500 mt-0.5">{subtitle}</p>}
+        </div>
+      )}
+      <div ref={containerRef} className="px-4 pb-4">
+        <canvas ref={canvasRef} className="w-full" />
       </div>
     </div>
   );
