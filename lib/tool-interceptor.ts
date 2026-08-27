@@ -62,7 +62,7 @@ function parseNaturalToolCalls(text: string): ToolCall[] {
 
   // Also match: Tool: web_search\nquery: DeepSeek AI
   // where tool and param are on different lines
-  const blockRegex = /(?:^|\n)\s*(?:Tool|Herramienta):\s*(\w+)\s*\n\s*(\w+):\s*(.+?)(?=\n(?:Tool|Herramienta):|\n\n|$)/gis;
+  const blockRegex = /(?:^|\n)\s*(?:Tool|Herramienta):\s*(\w+)\s*\n\s*(\w+):\s*([\s\S]+?)(?=\n(?:Tool|Herramienta):|\n\n|$)/gi;
   while ((m = blockRegex.exec(text)) !== null) {
     const toolName = m[1].toLowerCase();
     const param = m[2].toLowerCase();
