@@ -527,7 +527,7 @@ export default function Home() {
         contextWindow,
         agentRules,
         agentSkills,
-        activePersona,
+        activePersona || undefined,
       );
     },
     [activeProvider, activeModelId, activeSession, globalSystemPrompt, isGenerating, activeCachedModels, agentRules, agentSkills, activePersona]
@@ -761,7 +761,7 @@ export default function Home() {
       undefined,
       agentRules,
       agentSkills,
-      activePersona,
+      activePersona || undefined,
     );
   };
 
