@@ -11,6 +11,8 @@ import {
   Trash2, 
   Settings, 
   Wrench,
+  Shield,
+  Sparkles,
 } from 'lucide-react';
 import { 
   ProviderConfig, 
@@ -33,6 +35,10 @@ import {
   saveSessions, 
   saveActiveSessionId, 
   saveGlobalSystemPrompt,
+  saveAgentRules,
+  saveAgentSkills,
+  saveAgentPersonas,
+  saveActivePersonaId,
   createNewSession
 } from '@/lib/storage';
 import { createId, getCurrentTimestamp } from '@/lib/utils';
@@ -50,6 +56,8 @@ import { ParametersModal } from '@/components/ParametersModal';
 import { SystemPromptModal } from '@/components/SystemPromptModal';
 import { ExportModal } from '@/components/ExportModal';
 import { ToolsModal } from '@/components/ToolsModal';
+import { RulesModal } from '@/components/RulesModal';
+import { SkillsModal } from '@/components/SkillsModal';
 import { SafeErrorBoundary } from '@/components/SafeErrorBoundary';
 
 export default function Home() {
@@ -68,6 +76,10 @@ export default function Home() {
     sessions,
     activeSessionId,
     globalSystemPrompt,
+    agentRules,
+    agentSkills,
+    agentPersonas,
+    activePersonaId,
   } = appState;
 
   const [cachedModelsOverride, setCachedModelsOverride] = useState<ModelInfo[] | null>(null);
@@ -82,6 +94,13 @@ export default function Home() {
   const [isSystemPromptOpen, setIsSystemPromptOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [isToolsOpen, setIsToolsOpen] = useState(false);
+  const [isRulesOpen, setIsRulesOpen] = useState(false);
+  const [isSkillsOpen, setIsSkillsOpen] = useState(false);
+
+  // Active persona derived from storage
+  const activePersona = useMemo(() => {
+    return agentPersonas?.find((p) => p.id === activePersonaId) || null;
+  }, [agentPersonas, activePersonaId]);
   
   // Streaming state
   const [isGenerating, setIsGenerating] = useState(false);
@@ -505,10 +524,13 @@ export default function Home() {
           },
         },
         controller.signal,
-        contextWindow
+        contextWindow,
+        agentRules,
+        agentSkills,
+        activePersona,
       );
     },
-    [activeProvider, activeModelId, activeSession, globalSystemPrompt, isGenerating, activeCachedModels]
+    [activeProvider, activeModelId, activeSession, globalSystemPrompt, isGenerating, activeCachedModels, agentRules, agentSkills, activePersona]
   );
 
   // Handler: Send Message & Stream
@@ -735,7 +757,11 @@ export default function Home() {
           saveSessions(newSessions);
         },
       },
-      controller.signal
+      controller.signal,
+      undefined,
+      agentRules,
+      agentSkills,
+      activePersona,
     );
   };
 
@@ -905,6 +931,30 @@ export default function Home() {
               <span className="hidden sm:inline">Herramientas</span>
             </button>
 
+            {/* Agent Rules */}
+            <button
+              type="button"
+              id="header-rules-btn"
+              onClick={() => setIsRulesOpen(true)}
+              title="Reglas del agente"
+              className="flex-shrink-0 p-2 rounded-xl text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 border border-emerald-500/20 transition-colors flex items-center gap-1 text-xs font-semibold"
+            >
+              <Shield className="w-4 h-4" />
+              <span className="hidden sm:inline">Reglas</span>
+            </button>
+
+            {/* Agent Skills */}
+            <button
+              type="button"
+              id="header-skills-btn"
+              onClick={() => setIsSkillsOpen(true)}
+              title="Skills del agente"
+              className="flex-shrink-0 p-2 rounded-xl text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/40 border border-purple-500/20 transition-colors flex items-center gap-1 text-xs font-semibold"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span className="hidden sm:inline">Skills</span>
+            </button>
+
             {/* Provider & Base URL Settings Trigger */}
             <button
               type="button"
@@ -1055,6 +1105,24 @@ export default function Home() {
 
       <SafeErrorBoundary fallbackText="Fallo al abrir las herramientas locales.">
         <ToolsModal isOpen={isToolsOpen} onClose={() => setIsToolsOpen(false)} />
+      </SafeErrorBoundary>
+
+      <SafeErrorBoundary fallbackText="Fallo al abrir las reglas del agente.">
+        <RulesModal
+          isOpen={isRulesOpen}
+          onClose={() => setIsRulesOpen(false)}
+          rules={agentRules || []}
+          onSaveRules={saveAgentRules}
+        />
+      </SafeErrorBoundary>
+
+      <SafeErrorBoundary fallbackText="Fallo al abrir los skills del agente.">
+        <SkillsModal
+          isOpen={isSkillsOpen}
+          onClose={() => setIsSkillsOpen(false)}
+          skills={agentSkills || []}
+          onSaveSkills={saveAgentSkills}
+        />
       </SafeErrorBoundary>
     </div>
   );
