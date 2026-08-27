@@ -104,7 +104,7 @@ const EXAMPLES: Partial<Record<ToolId, Record<string, string>>> = {
   math: {
     input: '(2 + 3) * 4 ^ 2 - sqrt(144) + min(10, 20, 5)',
   },
-  csv: {
+  'csv-json': {
     input: 'nombre,edad,ciudad\nAna,30,Madrid\nLuis,42,Sevilla\nSofía,25,Valencia',
   },
   uuid: {
@@ -132,11 +132,16 @@ export const ToolsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
   const fillExample = () => {
     const ex = EXAMPLES[selected] as Record<string, string> | undefined;
     if (!ex) return;
-    setInput(ex.input ?? input);
-    setAltInput(ex.a ?? '');
-    setPattern(ex.pattern ?? '');
-    setFlags(ex.flags ?? '');
-    setExtra(ex.uuid ?? '');
+    const nextInput = ex.input ?? ex.b ?? input;
+    const nextAlt = ex.altInput ?? ex.a ?? altInput;
+    const nextPattern = ex.pattern ?? pattern;
+    const nextFlags = ex.flags ?? flags;
+    const nextExtra = ex.uuid ?? ex.count ?? extra;
+    setInput(nextInput);
+    setAltInput(nextAlt);
+    setPattern(nextPattern);
+    setFlags(nextFlags);
+    setExtra(nextExtra);
   };
 
   const execute = async () => {
