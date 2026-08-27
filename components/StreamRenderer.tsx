@@ -123,7 +123,8 @@ export const StreamRenderer: React.FC<StreamRendererProps> = ({
         </code>
       );
     },
-    table({ children }) {
+    table(props: any) {
+      const { children } = props;
       return (
         <div className="my-3 overflow-x-auto rounded-lg border border-neutral-200 dark:border-neutral-800">
           <table className="min-w-full text-xs sm:text-sm">
@@ -132,28 +133,32 @@ export const StreamRenderer: React.FC<StreamRendererProps> = ({
         </div>
       );
     },
-    th({ children }) {
+    th(props: any) {
+      const { children } = props;
       return (
         <th className="px-3 py-2 bg-neutral-100 dark:bg-neutral-800/60 text-left font-semibold text-neutral-900 dark:text-neutral-100 border-b-2 border-neutral-200 dark:border-neutral-700">
           {children}
         </th>
       );
     },
-    td({ children }) {
+    td(props: any) {
+      const { children } = props;
       return (
         <td className="px-3 py-2 border-t border-neutral-200 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300">
           {children}
         </td>
       );
     },
-    blockquote({ children }) {
+    blockquote(props: any) {
+      const { children } = props;
       return (
         <blockquote className="my-3 pl-4 border-l-[3px] border-accent bg-accent-soft/50 rounded-r-lg py-2 pr-3 text-neutral-600 dark:text-neutral-400 italic">
           {children}
         </blockquote>
       );
     },
-    a({ href, children }) {
+    a(props: any) {
+      const { href, children } = props;
       return (
         <a
           href={href}
@@ -165,14 +170,16 @@ export const StreamRenderer: React.FC<StreamRendererProps> = ({
         </a>
       );
     },
-    h2({ children }) {
+    h2(props: any) {
+      const { children } = props;
       return (
         <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mt-6 mb-3 pb-2 border-b border-neutral-200 dark:border-neutral-800 tracking-tight">
           {children}
         </h2>
       );
     },
-    h3({ children }) {
+    h3(props: any) {
+      const { children } = props;
       return (
         <h3 className="text-base font-semibold text-neutral-900 dark:text-neutral-100 mt-5 mb-2 tracking-tight">
           {children}
