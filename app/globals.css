@@ -181,18 +181,42 @@ pre code.hljs {
   text-decoration: underline;
 }
 
-/* Pulsing typing cursor animation */
+/* Pulsing typing cursor animation (smooth, accent-colored) */
 @keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
+  0%, 100% { opacity: 1; transform: scaleY(1); }
+  50% { opacity: 0.25; transform: scaleY(0.7); }
 }
 
 .typing-cursor {
   display: inline-block;
   width: 6px;
-  height: 15px;
-  background-color: currentColor;
+  height: 0.95em;
+  border-radius: 9999px;
+  background: linear-gradient(180deg, var(--accent), var(--accent-hover));
   margin-left: 2px;
   vertical-align: middle;
-  animation: blink 0.8s infinite;
+  animation: blink 0.9s ease-in-out infinite;
+  box-shadow: 0 0 8px var(--accent-soft);
+}
+
+/* Shimmer skeleton mientras el modelo "piensa" (razonamiento en streaming) */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.thinking-shimmer {
+  background: linear-gradient(90deg, var(--bg-tertiary) 25%, var(--accent-soft) 50%, var(--bg-tertiary) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+/* Entrada suave para mensajes nuevos durante el streaming */
+@keyframes msg-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.msg-enter {
+  animation: msg-in 0.25s ease-out;
 }

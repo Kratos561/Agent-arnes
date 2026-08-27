@@ -140,6 +140,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     };
     onUpdateProviders([...providers, newProvider]);
     setSelectedProviderId(newId);
+    flashSaved();
   };
 
   const handleDeleteProvider = (id: string) => {
@@ -536,7 +537,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="px-6 py-3.5 border-t border-neutral-200 dark:border-neutral-800 bg-neutral-50/50 dark:bg-[#181818]/50 flex items-center justify-end gap-2">
+        <div className="px-6 py-3.5 border-t border-neutral-200 dark:border-neutral-800 bg-neutral-50/50 dark:bg-[#181818]/50 flex items-center justify-between gap-2">
+          <div className="text-[11px] text-neutral-500 dark:text-neutral-400 flex items-center gap-1.5">
+            <span
+              className={`inline-flex items-center gap-1 font-medium transition-all ${
+                showSavedIndicator
+                  ? 'text-emerald-600 dark:text-emerald-400'
+                  : 'opacity-70'
+              }`}
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              {showSavedIndicator
+                ? 'Proveedor guardado en el arness'
+                : 'Los cambios se guardan automáticamente'}
+            </span>
+          </div>
           <button
             type="button"
             onClick={onClose}

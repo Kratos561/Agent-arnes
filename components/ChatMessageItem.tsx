@@ -101,7 +101,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
         isUser
           ? 'bg-transparent'
           : 'bg-neutral-50/50 dark:bg-[#1c1c1d]/40'
-      }`}
+      } ${isStreaming ? 'msg-enter' : ''}`}
     >
       <div className={`max-w-3xl mx-auto ${isUser ? 'flex justify-end' : 'flex items-start gap-3 sm:gap-4'}`}>
         {/* Avatar Icon (assistant only) */}
@@ -178,7 +178,17 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
               </button>
               {isReasoningOpen && (
                 <div className="p-3 text-xs text-neutral-600 dark:text-neutral-400 font-mono whitespace-pre-wrap border-t border-neutral-200 dark:border-neutral-800 bg-white/40 dark:bg-black/20 max-h-64 overflow-y-auto">
-                  {message.reasoning_content || (isThinking ? 'Razonando…' : '')}
+                  {message.reasoning_content ? (
+                    message.reasoning_content
+                  ) : isThinking ? (
+                    <div className="space-y-1.5" aria-label="Razonando">
+                      <div className="thinking-shimmer h-2.5 w-full rounded" />
+                      <div className="thinking-shimmer h-2.5 w-11/12 rounded" />
+                      <div className="thinking-shimmer h-2.5 w-4/5 rounded" />
+                    </div>
+                  ) : (
+                    ''
+                  )}
                 </div>
               )}
             </div>
@@ -252,7 +262,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
             <div
               className={`${
                 isUser
-                  ? 'text-sm sm:text-[15px] text-white dark:text-neutral-100 leading-relaxed break-words rounded-[22px] bg-[#3f3f41] dark:bg-[#3f3f41] px-4 py-2.5'
+                  ? 'text-sm sm:text-[15px] text-white dark:text-neutral-100 leading-relaxed break-words rounded-[22px] bg-gradient-to-br from-[#3b7be0] to-[#3f3f41] dark:from-[#3b7be0] dark:to-[#3f3f41] px-4 py-2.5 shadow-md shadow-accent/10'
                   : 'text-sm sm:text-base text-neutral-800 dark:text-neutral-200 leading-relaxed break-words max-w-none'
               }`}
             >
@@ -301,9 +311,9 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
                 </div>
               ) : null}
 
-              {/* Streaming Cursor */}
+              {/* Streaming Cursor (bloque animado) */}
               {isStreaming && (
-                <span className="typing-cursor text-accent font-bold ml-1">▎</span>
+                <span className="typing-cursor ml-1" aria-hidden="true" />
               )}
             </div>
           )}
