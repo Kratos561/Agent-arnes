@@ -52,6 +52,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     latencyMs?: number;
   }>({ status: 'idle' });
   const [modelSearch, setModelSearch] = useState('');
+  const [showSavedIndicator, setShowSavedIndicator] = useState(false);
+
+  const flashSaved = () => {
+    setShowSavedIndicator(true);
+    setTimeout(() => setShowSavedIndicator(false), 2400);
+  };
 
   if (!isOpen) return null;
 
