@@ -58,7 +58,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
   return (
     <div className="flex-1 flex flex-col items-center justify-center p-6 text-center max-w-3xl mx-auto my-auto">
       {/* ChatGPT Brand Icon */}
-      <div className="w-14 h-14 rounded-2xl bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 flex items-center justify-center shadow-md mb-6 ring-4 ring-neutral-100 dark:ring-neutral-800">
+      <div className="w-14 h-14 rounded-2xl bg-accent text-white flex items-center justify-center shadow-md mb-6 ring-4 ring-neutral-100 dark:ring-accent/20">
         <Sparkles className="w-7 h-7" />
       </div>
 
@@ -109,7 +109,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
               key={idx}
               type="button"
               onClick={() => onSelectPrompt(item.prompt)}
-              className="group p-4 rounded-xl border border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700 bg-white/80 dark:bg-[#1b1b1b]/80 hover:bg-neutral-50 dark:hover:bg-[#252525] transition-all text-left flex flex-col justify-between shadow-xs hover:shadow-sm"
+              className="group p-4 rounded-xl border border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700 bg-white/80 dark:bg-[#232323]/80 hover:bg-neutral-50 dark:hover:bg-[#282829] transition-all text-left flex flex-col justify-between shadow-xs hover:shadow-sm"
             >
               <div className="flex items-start gap-3 mb-2">
                 <div className="p-2 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">

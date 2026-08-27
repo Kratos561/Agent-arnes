@@ -692,7 +692,7 @@ export default function Home() {
 
   const hasApiKey = Boolean(activeProvider.apiKey?.trim());
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-white dark:bg-[#212121] text-neutral-900 dark:text-neutral-100 font-sans antialiased">
+    <div className="flex h-screen w-screen overflow-hidden bg-white dark:bg-[#232323] text-neutral-900 dark:text-neutral-100 font-sans antialiased">
       {/* Sidebar Component */}
       <Sidebar
         isOpen={isSidebarOpen}
@@ -713,11 +713,11 @@ export default function Home() {
       />
 
       {/* Main Chat View Area */}
-      <main className="flex-1 flex flex-col h-full min-w-0 relative overflow-hidden bg-white dark:bg-[#212121]">
+      <main className="flex-1 flex flex-col h-full min-w-0 relative overflow-hidden bg-white dark:bg-[#232323]">
         {/* Top Header Bar */}
         <header
           id="chat-header-bar"
-          className="h-14 border-b border-neutral-200 dark:border-neutral-800/80 bg-white/80 dark:bg-[#212121]/80 backdrop-blur-md px-4 flex items-center justify-between z-20 flex-shrink-0"
+          className="h-14 border-b border-neutral-200 dark:border-neutral-800/80 bg-white/80 dark:bg-[#232323]/80 backdrop-blur-md px-4 flex items-center justify-between z-20 flex-shrink-0"
         >
           {/* Left: Sidebar Toggle + Model Dropdown */}
           <div className="flex items-center gap-2 min-w-0">

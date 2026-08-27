@@ -7,7 +7,6 @@ import {
   Paperclip, 
   X, 
   FileText, 
-  CornerDownLeft,
   Sparkles
 } from 'lucide-react';
 
@@ -113,7 +112,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     <div className="w-full max-w-4xl mx-auto px-4 pb-4 sm:pb-6">
       <div
         id="chat-input-container"
-        className="relative bg-white dark:bg-[#212121] border border-neutral-200 dark:border-neutral-700/80 rounded-2xl shadow-lg shadow-black/5 dark:shadow-black/20 focus-within:ring-2 focus-within:ring-emerald-500/50 focus-within:border-emerald-500 transition-all"
+        className="relative bg-white dark:bg-[#1c1c1d] border border-neutral-200 dark:border-neutral-700/60 rounded-[22px] shadow-lg shadow-black/5 dark:shadow-black/30 focus-within:ring-2 focus-within:ring-accent/40 focus-within:border-accent transition-all"
       >
         {/* Attachments list */}
         {attachments.length > 0 && (
@@ -123,7 +122,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                 key={i}
                 className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-xs text-neutral-800 dark:text-neutral-200 border border-neutral-200 dark:border-neutral-700"
               >
-                <FileText className="w-3.5 h-3.5 text-emerald-500" />
+                <FileText className="w-3.5 h-3.5 text-accent" />
                 <span className="max-w-[150px] truncate font-medium">{att.name}</span>
                 <span className="text-[10px] text-neutral-400">({att.size})</span>
                 <button
@@ -171,7 +170,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             className="flex-1 max-h-52 bg-transparent text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 dark:placeholder-neutral-500 text-sm sm:text-base resize-none focus:outline-none py-1.5 px-1 leading-relaxed"
           />
 
-          {/* Action button: Send or Stop */}
+          {/* Action button: Send or Stop — circular DeepSeek style */}
           <div className="flex items-center gap-1.5 flex-shrink-0">
             {isGenerating ? (
               <button
@@ -179,7 +178,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                 id="stop-generation-btn"
                 onClick={onStopGeneration}
                 title="Detener respuesta"
-                className="p-2 sm:p-2.5 rounded-xl bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 hover:opacity-85 transition-all shadow-sm flex items-center justify-center"
+                className="w-8 h-8 rounded-full bg-neutral-800 text-white dark:bg-neutral-200 dark:text-neutral-900 hover:opacity-85 transition-all shadow-sm flex items-center justify-center"
               >
                 <Square className="w-4 h-4 fill-current" />
               </button>
@@ -190,13 +189,13 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                 onClick={handleSubmit}
                 disabled={(!text.trim() && attachments.length === 0) || disabled}
                 title="Enviar mensaje (Enter)"
-                className={`p-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center ${
+                className={`w-8 h-8 rounded-full transition-all flex items-center justify-center ${
                   text.trim() || attachments.length > 0
-                    ? 'bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 hover:opacity-90 shadow-sm'
+                    ? 'bg-accent text-white hover:bg-accent-hover shadow-md shadow-accent/30'
                     : 'bg-neutral-200 text-neutral-400 dark:bg-neutral-800 dark:text-neutral-600 cursor-not-allowed'
                 }`}
               >
-                <CornerDownLeft className="w-4 h-4" />
+                <Send className="w-3.5 h-3.5 ml-0.5" />
               </button>
             )}
           </div>
@@ -207,7 +206,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           <div className="flex items-center gap-2">
             {activeModelName && (
               <span className="flex items-center gap-1">
-                <Sparkles className="w-3 h-3 text-emerald-500" />
+                <Sparkles className="w-3 h-3 text-accent" />
                 <span className="truncate max-w-[200px]">{activeModelName}</span>
               </span>
             )}

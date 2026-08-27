@@ -195,7 +195,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       <aside
         id="app-sidebar"
-        className={`fixed md:static inset-y-0 left-0 z-40 w-72 bg-[#f9f9f9] dark:bg-[#171717] border-r border-neutral-200 dark:border-neutral-800 flex flex-col transition-transform duration-200 ease-in-out ${
+        className={`fixed md:static inset-y-0 left-0 z-40 w-72 bg-[#f9f9f9] dark:bg-[#1e1e1f] border-r border-neutral-200 dark:border-neutral-800 flex flex-col transition-transform duration-200 ease-in-out ${
           isOpen ? 'translate-x-0' : '-translate-x-full md:-translate-x-full md:w-0 md:border-r-0'
         }`}
       >
@@ -203,7 +203,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="p-3.5 flex flex-col gap-2.5 border-b border-neutral-200 dark:border-neutral-800">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 flex items-center justify-center font-bold text-xs shadow-xs">
+              <div className="w-7 h-7 rounded-lg bg-accent text-white flex items-center justify-center font-bold text-xs shadow-xs">
                 <Sparkles className="w-4 h-4" />
               </div>
               <span className="font-semibold text-sm text-neutral-900 dark:text-neutral-100 tracking-tight">
@@ -225,7 +225,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             type="button"
             id="new-chat-btn"
             onClick={onNewChat}
-            className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-white dark:bg-[#212121] hover:bg-neutral-50 dark:hover:bg-[#282828] border border-neutral-200 dark:border-neutral-700/80 text-neutral-900 dark:text-neutral-100 text-xs sm:text-sm font-semibold shadow-xs transition-all group"
+            className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-white dark:bg-[#232323] hover:bg-neutral-50 dark:hover:bg-[#282829] border border-neutral-200 dark:border-neutral-700/80 text-neutral-900 dark:text-neutral-100 text-xs sm:text-sm font-semibold shadow-xs transition-all group"
           >
             <div className="flex items-center gap-2">
               <Plus className="w-4 h-4 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform" />
@@ -246,7 +246,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Buscar conversaciones..."
-              className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl bg-white dark:bg-[#202020] text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 border border-neutral-200 dark:border-neutral-800 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl bg-white dark:bg-[#282829] text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 border border-neutral-200 dark:border-neutral-800 focus:outline-none focus:ring-1 focus:ring-emerald-500"
             />
           </div>
         </div>
@@ -288,7 +288,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Bottom Panel: Provider Info + Settings + Dark Mode */}
-        <div className="p-3 border-t border-neutral-200 dark:border-neutral-800 bg-[#f4f4f4] dark:bg-[#141414] space-y-1.5">
+        <div className="p-3 border-t border-neutral-200 dark:border-neutral-800 bg-[#f4f4f4] dark:bg-[#1a1a1b] space-y-1.5">
           {/* Active Provider Pill / Trigger */}
           <button
             type="button"

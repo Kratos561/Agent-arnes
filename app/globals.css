@@ -9,16 +9,59 @@
     --text-primary: #0d0d0d;
     --text-secondary: #676767;
     --border-color: #e5e5e5;
+    /* DeepSeek accent (light) */
+    --accent: #4768d9;
+    --accent-hover: #3b5cc7;
+    --accent-soft: #eef1fb;
+    --accent-soft-border: #d5ddf5;
   }
 
   .dark {
-    --bg-primary: #212121;
-    --bg-secondary: #171717;
-    --bg-tertiary: #2f2f2f;
-    --text-primary: #ececec;
-    --text-secondary: #b4b4b4;
-    --border-color: #2f2f2f;
+    /* DeepSeek bluish dark palette */
+    --bg-primary: #232323;
+    --bg-secondary: #1c1c1d;
+    --bg-tertiary: #2c2c2e;
+    --text-primary: #ececf0;
+    --text-secondary: #a6a6ad;
+    --border-color: rgba(255, 255, 255, 0.08);
+    /* DeepSeek accent (dark) ~ #4D96FF family */
+    --accent: #4d96ff;
+    --accent-hover: #67a6ff;
+    --accent-soft: rgba(77, 150, 255, 0.12);
+    --accent-soft-border: rgba(77, 150, 255, 0.35);
+    /* Bluish surfaces (DeepSeek harness) */
+    --surface-sidebar: #1e1e1f;
+    --surface-input: #1c1c1d;
+    --surface-bubble: #3f3f41;
+    --surface-header: #232323;
   }
+}
+
+/* Body background tinted bluish in dark mode */
+.dark body {
+  background-color: #232323;
+}
+
+/* DeepSeek accent utilities (work with dark: variants via theme) */
+@theme inline {
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+}
+
+/* Remap the emerald ramp to the DeepSeek blue accent scale */
+@theme {
+  --color-emerald-50: #eef4ff;
+  --color-emerald-100: #dbe8ff;
+  --color-emerald-200: #bcd4ff;
+  --color-emerald-300: #93b8ff;
+  --color-emerald-400: #679eff;
+  --color-emerald-500: #4d96ff;
+  --color-emerald-600: #3b7be0;
+  --color-emerald-700: #2f63bd;
+  --color-emerald-800: #2a5299;
+  --color-emerald-900: #27477a;
+  --color-emerald-950: #17295b;
 }
 
 /* Custom smooth scrollbars */

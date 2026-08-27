@@ -11,7 +11,6 @@ import {
   ChevronDown, 
   ChevronRight, 
   Sparkles, 
-  User, 
   AlertCircle,
   Brain,
   Settings
@@ -86,35 +85,32 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
   return (
     <div
       id={`chat-msg-${message.id}`}
-      className={`group w-full border-b border-neutral-100 dark:border-neutral-800/40 py-5 px-4 sm:px-6 md:px-8 transition-colors ${
+      className={`group w-full py-4 px-4 sm:px-6 md:px-8 transition-colors ${
         isUser
           ? 'bg-transparent'
-          : 'bg-neutral-50/50 dark:bg-[#1e1e1e]/40'
+          : 'bg-neutral-50/50 dark:bg-[#1c1c1d]/40'
       }`}
     >
-      <div className="max-w-3xl mx-auto flex items-start gap-3 sm:gap-4">
-        {/* Avatar Icon */}
-        <div className="flex-shrink-0">
-          {isUser ? (
-            <div className="w-8 h-8 rounded-full bg-neutral-800 text-white dark:bg-neutral-200 dark:text-neutral-900 flex items-center justify-center font-medium text-xs shadow-sm">
-              <User className="w-4 h-4" />
-            </div>
-          ) : (
-            <div className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center font-medium text-xs shadow-sm ring-1 ring-emerald-500/20">
+      <div className={`max-w-3xl mx-auto ${isUser ? 'flex justify-end' : 'flex items-start gap-3 sm:gap-4'}`}>
+        {/* Avatar Icon (assistant only) */}
+        {!isUser && (
+          <div className="flex-shrink-0">
+            <div className="w-8 h-8 rounded-full bg-accent text-white flex items-center justify-center font-medium text-xs shadow-sm ring-1 ring-accent/20">
               <Sparkles className="w-4 h-4" />
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Content Area */}
-        <div className="flex-1 min-w-0 space-y-2">
+        <div className={`${isUser ? 'max-w-[82%] sm:max-w-[525px]' : 'flex-1 min-w-0'} space-y-2`}>
           {/* Header Info */}
+          {!isUser && (
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <span className="font-semibold text-sm text-neutral-900 dark:text-neutral-100">
-                {isUser ? 'Tú' : message.model ? message.model.split('/').pop() : 'Asistente'}
+                {message.model ? message.model.split('/').pop() : 'Asistente'}
               </span>
-              {message.model && isAssistant && (
+              {message.model && (
                 <span className="text-[11px] px-1.5 py-0.5 rounded bg-neutral-200/80 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 font-mono">
                   {message.model}
                 </span>
@@ -131,6 +127,13 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
               <span suppressHydrationWarning>{message.timestamp ? new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</span>
             </div>
           </div>
+          )}
+          {isUser && (
+          <div className="text-[11px] text-neutral-400 dark:text-neutral-500 flex items-center gap-2 justify-end">
+            <span className="font-semibold text-xs text-neutral-600 dark:text-neutral-300">Tú</span>
+            <span suppressHydrationWarning>{message.timestamp ? new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+          </div>
+          )}
 
           {/* DeepSeek / Thinking Collapsible Block */}
           {message.reasoning_content && (
@@ -203,7 +206,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
               <textarea
                 value={editedText}
                 onChange={(e) => setEditedText(e.target.value)}
-                className="w-full p-3 text-sm rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className="w-full p-3 text-sm rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-accent"
                 rows={3}
               />
               <div className="flex items-center gap-2 justify-end">
@@ -215,7 +218,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
                 </button>
                 <button
                   onClick={handleSaveEdit}
-                  className="px-3 py-1.5 text-xs font-medium bg-emerald-600 text-white hover:bg-emerald-700 rounded-md shadow-sm transition-colors"
+                  className="px-3 py-1.5 text-xs font-medium bg-accent text-white hover:bg-accent-hover rounded-md shadow-sm transition-colors"
                 >
                   Guardar y Enviar
                 </button>
@@ -223,7 +226,13 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
             </div>
           ) : (
             /* Message Body */
-            <div className="text-sm sm:text-base text-neutral-800 dark:text-neutral-200 leading-relaxed break-words max-w-none">
+            <div
+              className={`${
+                isUser
+                  ? 'text-sm sm:text-[15px] text-white dark:text-neutral-100 leading-relaxed break-words rounded-[22px] bg-[#3f3f41] dark:bg-[#3f3f41] px-4 py-2.5'
+                  : 'text-sm sm:text-base text-neutral-800 dark:text-neutral-200 leading-relaxed break-words max-w-none'
+              }`}
+            >
               {message.content ? (
                 <StreamRenderer content={message.content} isStreaming={isStreaming} />
               ) : isStreaming ? null : isAssistant ? (
@@ -240,7 +249,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
                       <button
                         type="button"
                         onClick={onContinue}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-sm transition-colors"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent hover:bg-accent-hover text-white text-xs font-semibold shadow-sm transition-colors"
                       >
                         <Sparkles className="w-3.5 h-3.5" />
                         Continuar escribiendo respuesta
@@ -271,7 +280,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
 
               {/* Streaming Cursor */}
               {isStreaming && (
-                <span className="typing-cursor text-emerald-500 font-bold ml-1">▎</span>
+                <span className="typing-cursor text-accent font-bold ml-1">▎</span>
               )}
             </div>
           )}
@@ -318,7 +327,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
                 title="Copiar mensaje"
                 className="p-1.5 rounded-md text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
               >
-                {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                {copied ? <Check className="w-3.5 h-3.5 text-accent" /> : <Copy className="w-3.5 h-3.5" />}
               </button>
 
               <button
@@ -328,7 +337,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
                 className="p-1.5 rounded-md text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
               >
                 {isPlayingAudio ? (
-                  <VolumeX className="w-3.5 h-3.5 text-emerald-500" />
+                  <VolumeX className="w-3.5 h-3.5 text-accent" />
                 ) : (
                   <Volume2 className="w-3.5 h-3.5" />
                 )}
@@ -352,7 +361,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
                   title="Continuar generación"
                   className="p-1.5 rounded-md text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <Sparkles className="w-3.5 h-3.5 text-accent" />
                 </button>
               )}
 
