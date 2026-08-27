@@ -212,16 +212,7 @@ export function loadAgentSkills(): AgentSkill[] {
     if (!raw) return DEFAULT_SKILLS;
     const parsed: AgentSkill[] = JSON.parse(raw);
     if (!parsed || parsed.length === 0) return DEFAULT_SKILLS;
-    const merged = [...DEFAULT_SKILLS];
-    for (const s of parsed) {
-      const idx = merged.findIndex((m) => m.id === s.id);
-      if (idx >= 0) {
-        merged[idx] = { ...merged[idx], ...s };
-      } else {
-        merged.push(s);
-      }
-    }
-    return merged;
+    return parsed;
   } catch {
     return DEFAULT_SKILLS;
   }

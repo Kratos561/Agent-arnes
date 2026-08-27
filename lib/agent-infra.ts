@@ -10,6 +10,10 @@
  *   100   User rules (AGENTS.md-style)
  *   150   Tool guidance (per-tool cross-call habits)
  *   200   Safety & compliance
+ *
+ * Skills follow the open Agent Skills standard (SKILL.md format):
+ *   - YAML frontmatter: name, description, optional fields
+ *   - Markdown body: instructions
  */
 
 import { ProviderConfig } from './types';
@@ -28,14 +32,18 @@ export interface AgentRule {
   updatedAt: number;
 }
 
+/**
+ * AgentSkill follows the Agent Skills open standard (SKILL.md).
+ * name = directory name / command name
+ * description = trigger routing logic (loaded in listing)
+ * instructions = full SKILL.md body (loaded on invocation)
+ */
 export interface AgentSkill {
   id: string;
   name: string;
   description: string;
   instructions: string;
   enabled: boolean;
-  icon: string;
-  category: 'coding' | 'writing' | 'analysis' | 'creative' | 'custom';
   triggers: string[];
   createdAt: number;
   updatedAt: number;
@@ -62,6 +70,88 @@ export interface AssembleContext {
   activeSkills: AgentSkill[];
   persona: PersonaConfig;
   sessionPrompt?: string;
+}
+
+// ===== SKILL.md Parser =====
+
+/**
+ * Parses a SKILL.md file (YAML frontmatter + Markdown body).
+ * Format:
+ *   ---
+ *   name: skill-name
+ *   description: When to use this skill...
+ *   ---
+ *   ## Instructions
+ *   ...markdown content...
+ */
+export function parseSkillMd(raw: string): { frontmatter: Record<string, string>; body: string } | null {
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith('---')) return null;
+
+  const endFm = trimmed.indexOf('---', 3);
+  if (endFm === -1) return null;
+
+  const fmBlock = trimmed.slice(3, endFm).trim();
+  const body = trimmed.slice(endFm + 3).trim();
+
+  const frontmatter: Record<string, string> = {};
+  for (const line of fmBlock.split('\n')) {
+    const colonIdx = line.indexOf(':');
+    if (colonIdx > 0) {
+      const key = line.slice(0, colonIdx).trim();
+      const val = line.slice(colonIdx + 1).trim();
+      if (key) frontmatter[key] = val;
+    }
+  }
+
+  return { frontmatter, body };
+}
+
+/**
+ * Creates an AgentSkill from raw SKILL.md content.
+ * Generates ID from name, extracts triggers from description.
+ */
+export function skillFromSkillMd(raw: string, existingId?: string): AgentSkill | null {
+  const parsed = parseSkillMd(raw);
+  if (!parsed) return null;
+
+  const { frontmatter, body } = parsed;
+  const name = frontmatter.name || 'unnamed';
+  const description = frontmatter.description || body.slice(0, 120).replace(/\n/g, ' ');
+
+  // Extract trigger phrases from description (lowercase words/phrases > 3 chars)
+  const triggers = description
+    .toLowerCase()
+    .replace(/[^a-z0-9\sáéíóúñ]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length > 3)
+    .slice(0, 8);
+
+  return {
+    id: existingId || `skill-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now()}`,
+    name,
+    description,
+    instructions: body,
+    enabled: true,
+    triggers,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+}
+
+/**
+ * Exports an AgentSkill to SKILL.md format.
+ */
+export function skillToSkillMd(skill: AgentSkill): string {
+  const lines = [
+    '---',
+    `name: ${skill.name}`,
+    `description: ${skill.description}`,
+    '---',
+    '',
+    skill.instructions,
+  ];
+  return lines.join('\n');
 }
 
 // ===== Default Rules =====
@@ -131,114 +221,7 @@ export const DEFAULT_RULES: AgentRule[] = [
 
 // ===== Default Skills =====
 
-export const DEFAULT_SKILLS: AgentSkill[] = [
-  {
-    id: 'skill-code-review',
-    name: 'Code Review',
-    description: 'Revision profunda de código con análisis de calidad, seguridad y rendimiento',
-    instructions: `Cuando revises código, sigue este protocolo:
-1. **Análisis Estructural**: Evalúa la arquitectura, separación de responsabilidades y patrones de diseño.
-2. **Seguridad**: Identifica vulnerabilidades (XSS, SQL injection, secrets expuestos, dependencias vulnerables).
-3. **Rendimiento**: Detecta cuellos de botella, operaciones innecesarias, uso excesivo de memoria.
-4. **Legibilidad**: Evalúa naming, comentarios, complejidad ciclomática, funciones demasiado largas.
-5. **Testing**: Sugiere casos de prueba faltantes y cobertura.
-6. **Resumen**: Presenta hallazgos en tabla priorizada (Crítico > Mayor > Menor > Sugerencia).`,
-    enabled: true,
-    icon: '🔍',
-    category: 'coding',
-    triggers: ['revisar código', 'code review', 'audit', 'refactorizar', 'mejorar código'],
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  },
-  {
-    id: 'skill-api-design',
-    name: 'Diseño de APIs',
-    description: 'Diseña APIs REST/GraphQL robustas con documentación completa',
-    instructions: `Al diseñar una API:
-1. **Define el modelo de datos** con schemas TypeScript/Pydantic completos.
-2. **Diseña los endpoints** siguiendo convenciones REST (resources, HTTP methods, status codes).
-3. **Implementa autenticación** y autorización (JWT, API keys, OAuth).
-4. **Documenta** con OpenAPI/Swagger ejemplo.
-5. **Incluye validación** de entrada, rate limiting, y manejo de errores estructurado.
-6. **Genera código** completo del servidor con testing unitario.`,
-    enabled: true,
-    icon: '🔌',
-    category: 'coding',
-    triggers: ['crear api', 'diseñar api', 'endpoint', 'rest api', 'graphql'],
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  },
-  {
-    id: 'skill-document-writer',
-    name: 'Redactor de Documentos',
-    description: 'Genera documentos profesionales, reportes y propuestas',
-    instructions: `Al redactar documentos profesionales:
-1. **Estructura**: Usa encabezados jerárquicos, resumen ejecutivo, secciones claras.
-2. **Tono**: Profesional pero accesible, evita jerga innecesaria.
-3. **Datos**: Incluye métricas, tablas comparativas, gráficos ASCII cuando sea relevante.
-4. **Acciones**: Termina con recomendaciones concretas y próximos pasos.
-5. **Formato**: Markdown limpio con tablas, listas y énfasis estratégico.`,
-    enabled: true,
-    icon: '📄',
-    category: 'writing',
-    triggers: ['escribir documento', 'reporte', 'propuesta', 'whitepaper', 'artículo'],
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  },
-  {
-    id: 'skill-data-analysis',
-    name: 'Análisis de Datos',
-    description: 'Analiza datasets, genera visualizaciones y extrae insights',
-    instructions: `Al analizar datos:
-1. **Exploración**: Describe la estructura, tipos, distribuciones y valores faltantes.
-2. **Limpieza**: Identifica outliers, duplicados e inconsistencias.
-3. **Análisis**: Estadísticas descriptivas, correlaciones, tendencias.
-4. **Visualización**: Genera código Python (matplotlib/seaborn) o JavaScript (Chart.js) para gráficos.
-5. **Insights**: Extrae conclusiones accionables con soporte estadístico.
-6. **Entregable**: Código reproducible + resumen ejecutivo.`,
-    enabled: true,
-    icon: '📊',
-    category: 'analysis',
-    triggers: ['analizar datos', 'dataset', 'estadísticas', 'visualización', 'csv', 'json data'],
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  },
-  {
-    id: 'skill-creative-writing',
-    name: 'Escritura Creativa',
-    description: 'Genera contenido creativo, narrativas y guiones',
-    instructions: `Al escribir de forma creativa:
-1. **Voz**: Desarrolla una voz narrativa distintiva y consistente.
-2. **Estructura**: Arco narrativo claro con conflicto, desarrollo y resolución.
-3. **Diálogos**: Naturales, con subtexto y personalidad diferenciada.
-4. **Descripciones**: Sensoriales, evocadoras, sin caer en clichés.
-5. **Formato**: Puedes usar markdown para estructura creativa (actos, escenas, notas).`,
-    enabled: true,
-    icon: '✍️',
-    category: 'creative',
-    triggers: ['escribir historia', 'guion', 'poema', 'creative writing', 'narrativa'],
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  },
-  {
-    id: 'skill-system-design',
-    name: 'Diseño de Sistemas',
-    description: 'Arquitectura de software, diagramas y decisiones de diseño',
-    instructions: `Al diseñar sistemas:
-1. **Requisitos**: Clarifica funcionalidades, restricciones y escala esperada.
-2. **Arquitectura**: Propón patrones apropiados (microservices, monolith, serverless, etc.).
-3. **Componentes**: Define servicios, bases de datos, colas, cachés con justificación.
-4. **Diagramas**: Genera diagramas en Mermaid o ASCII art.
-5. **Trade-offs**: Analiza ventajas/desventajas de cada decisión.
-6. **Roadmap**: Plan de implementación por fases con estimaciones.`,
-    enabled: true,
-    icon: '🏗️',
-    category: 'coding',
-    triggers: ['diseñar sistema', 'arquitectura', 'system design', 'diagrama', 'escalar'],
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  },
-];
+export const DEFAULT_SKILLS: AgentSkill[] = [];
 
 // ===== Default Personas =====
 
@@ -318,12 +301,12 @@ export function assemblePrompt(ctx: AssembleContext): string {
   const activeSkills = ctx.activeSkills.filter((s) => s.enabled);
   if (activeSkills.length > 0) {
     const skillsText = activeSkills
-      .map((s) => `### ${s.icon} ${s.name}\n${s.instructions}`)
+      .map((s) => `### ${s.name}\n${s.instructions}`)
       .join('\n\n');
     sections.push({
       name: 'skills:active',
       order: 50,
-      text: `## Skills Activas\n\nEstas instrucciones de skills están cargadas para esta sesión:\n\n${skillsText}`,
+      text: `## Skills Activas\n\nEstas instrucciones de skills estan cargadas para esta sesion:\n\n${skillsText}`,
     });
   }
 
@@ -406,5 +389,5 @@ export function detectMatchingSkills(
 export function getSkillCatalog(skills: AgentSkill[]): string {
   const enabled = skills.filter((s) => s.enabled);
   if (enabled.length === 0) return '';
-  return enabled.map((s) => `- ${s.icon} **${s.name}**: ${s.description}`).join('\n');
+  return enabled.map((s) => `- **${s.name}**: ${s.description}`).join('\n');
 }
