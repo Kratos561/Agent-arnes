@@ -19,6 +19,7 @@ import {
   ChatMessage, 
   ModelParameters,
   DEFAULT_PARAMETERS,
+  AskPayload,
 } from '@/lib/types';
 import { 
   subscribeAppStore,
@@ -36,6 +37,9 @@ import {
 } from '@/lib/storage';
 import { createId, getCurrentTimestamp } from '@/lib/utils';
 import { sendChatMessageStream } from '@/lib/api-client';
+import { parseAskBlocks } from '@/lib/agent-protocol';
+import { windowSizeForContextLength } from '@/lib/compaction';
+import { estimateTokenCount } from '@/lib/context-manager';
 import { Sidebar } from '@/components/Sidebar';
 import { ModelDropdown } from '@/components/ModelDropdown';
 import { ChatMessageItem } from '@/components/ChatMessageItem';
@@ -329,161 +333,215 @@ export default function Home() {
     }
   };
 
-  // Handler: Send Message & Stream
-  const handleSendMessage = async (userContent: string) => {
-    if (!userContent.trim() || !activeSession || isGenerating) return;
+  // Core generation runner: añade mensaje de usuario, streamea la respuesta y parsea bloques ask
+  const runGeneration = useCallback(
+    async (userContent: string, contextMessages: ChatMessage[], targetSessionId?: string) => {
+      if (!userContent.trim() || !activeSession || isGenerating) return;
 
-    const needsKey = !activeProvider.apiKey;
-
-    if (needsKey) {
-      setIsSettingsOpen(true);
-      return;
-    }
-
-    const currentTimestamp = getCurrentTimestamp();
-
-    const userMessage: ChatMessage = {
-      id: createId('msg_u'),
-      role: 'user',
-      content: userContent,
-      timestamp: currentTimestamp,
-    };
-
-    const assistantMessageId = createId('msg_a');
-    const initialAssistantMessage: ChatMessage = {
-      id: assistantMessageId,
-      role: 'assistant',
-      content: '',
-      reasoning_content: '',
-      timestamp: currentTimestamp,
-      model: activeModelId,
-    };
-
-    // Auto generate title on first user message
-    let sessionTitle = activeSession.title;
-    if (activeSession.messages.length === 0 || activeSession.title === 'Nuevo Chat') {
-      const words = userContent.trim().split(/\s+/).slice(0, 6).join(' ');
-      sessionTitle = words.length > 36 ? `${words.slice(0, 36)}...` : words;
-    }
-
-    const updatedMessages = [...activeSession.messages, userMessage, initialAssistantMessage];
-
-    // Update session state
-    const currentSessionId = activeSession.id;
-    const currentSessions = getAppStoreSnapshot().sessions;
-    const intermediateSessions = currentSessions.map((s) => {
-      if (s.id === currentSessionId) {
-        return {
-          ...s,
-          title: sessionTitle,
-          messages: updatedMessages,
-          updatedAt: currentTimestamp,
-        };
+      const needsKey = !activeProvider.apiKey;
+      if (needsKey) {
+        setIsSettingsOpen(true);
+        return;
       }
-      return s;
-    });
-    saveSessions(intermediateSessions);
 
-    setIsGenerating(true);
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
+      const currentTimestamp = getCurrentTimestamp();
+      const sessionId = targetSessionId || activeSession.id;
 
-    let accumulatedContent = '';
-    let accumulatedReasoning = '';
+      // Ventana de contexto del modelo activo (para la compactación del historial)
+      const activeModelInfo = activeCachedModels.find((m) => m.id === activeModelId);
+      const contextWindow = windowSizeForContextLength(activeModelInfo?.context_length);
 
-    await sendChatMessageStream(
-      activeProvider,
-      activeModelId,
-      [...activeSession.messages, userMessage],
-      activeSession.parameters || DEFAULT_PARAMETERS,
-      activeSession.systemPrompt || globalSystemPrompt,
-      {
-        onChunk: (chunk) => {
-          accumulatedContent += chunk;
-          const liveSessions = getAppStoreSnapshot().sessions;
-          const liveUpdated = liveSessions.map((s) => {
-            if (s.id === currentSessionId) {
-              const msgs = s.messages.map((m) => {
-                if (m.id === assistantMessageId) {
-                  return { ...m, content: accumulatedContent };
-                }
-                return m;
-              });
-              return { ...s, messages: msgs };
-            }
-            return s;
-          });
-          saveSessions(liveUpdated);
+      const userMessage: ChatMessage = {
+        id: createId('msg_u'),
+        role: 'user',
+        content: userContent,
+        timestamp: currentTimestamp,
+      };
+
+      const assistantMessageId = createId('msg_a');
+      const initialAssistantMessage: ChatMessage = {
+        id: assistantMessageId,
+        role: 'assistant',
+        content: '',
+        reasoning_content: '',
+        timestamp: currentTimestamp,
+        model: activeModelId,
+      };
+
+      // Auto generate title on first user message
+      const words = userContent.trim().split(/\s+/).slice(0, 6).join(' ');
+      const sessionTitle = words.length > 36 ? `${words.slice(0, 36)}...` : words;
+
+      const updatedMessages = [...contextMessages, userMessage, initialAssistantMessage];
+
+      // Update session state
+      const currentSessions = getAppStoreSnapshot().sessions;
+      const intermediateSessions = currentSessions.map((s) => {
+        if (s.id === sessionId) {
+          return {
+            ...s,
+            title: contextMessages.length === 0 ? sessionTitle : s.title,
+            messages: updatedMessages,
+            updatedAt: currentTimestamp,
+          };
+        }
+        return s;
+      });
+      saveSessions(intermediateSessions);
+
+      setIsGenerating(true);
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
+      let accumulatedContent = '';
+      let accumulatedReasoning = '';
+
+      await sendChatMessageStream(
+        activeProvider,
+        activeModelId,
+        [...contextMessages, userMessage],
+        activeSession.parameters || DEFAULT_PARAMETERS,
+        activeSession.systemPrompt || globalSystemPrompt,
+        {
+          onChunk: (chunk) => {
+            accumulatedContent += chunk;
+            const liveSessions = getAppStoreSnapshot().sessions;
+            const liveUpdated = liveSessions.map((s) => {
+              if (s.id === sessionId) {
+                const msgs = s.messages.map((m) => {
+                  if (m.id === assistantMessageId) {
+                    return { ...m, content: accumulatedContent };
+                  }
+                  return m;
+                });
+                return { ...s, messages: msgs };
+              }
+              return s;
+            });
+            saveSessions(liveUpdated);
+          },
+          onReasoning: (reasoningChunk) => {
+            accumulatedReasoning += reasoningChunk;
+            const liveSessions = getAppStoreSnapshot().sessions;
+            const liveUpdated = liveSessions.map((s) => {
+              if (s.id === sessionId) {
+                const msgs = s.messages.map((m) => {
+                  if (m.id === assistantMessageId) {
+                    return { ...m, reasoning_content: accumulatedReasoning };
+                  }
+                  return m;
+                });
+                return { ...s, messages: msgs };
+              }
+              return s;
+            });
+            saveSessions(liveUpdated);
+          },
+          onDone: (finalContent, finalReasoning, tokens, finishReason) => {
+            setIsGenerating(false);
+            abortControllerRef.current = null;
+            const doneTimestamp = getCurrentTimestamp();
+            const combined = finalContent || accumulatedContent;
+
+            // Parsear bloques "ask" del modelo: separar el texto visible de las preguntas pendientes
+            const { asks, text: visibleContent } = parseAskBlocks(combined);
+            const pendingAsks = asks.length > 0 ? asks : undefined;
+
+            const liveSessions = getAppStoreSnapshot().sessions;
+            const newSessions = liveSessions.map((s) => {
+              if (s.id === sessionId) {
+                const msgs = s.messages.map((m) => {
+                  if (m.id === assistantMessageId) {
+                    return {
+                      ...m,
+                      content: visibleContent,
+                      reasoning_content: finalReasoning || accumulatedReasoning,
+                      tokens,
+                      finish_reason: finishReason,
+                      asks: pendingAsks,
+                      askAnswered: pendingAsks ? false : undefined,
+                    };
+                  }
+                  return m;
+                });
+                return { ...s, messages: msgs, updatedAt: doneTimestamp };
+              }
+              return s;
+            });
+            saveSessions(newSessions);
+          },
+          onError: (errMessage) => {
+            setIsGenerating(false);
+            abortControllerRef.current = null;
+            const errTimestamp = getCurrentTimestamp();
+            const liveSessions = getAppStoreSnapshot().sessions;
+            const newSessions = liveSessions.map((s) => {
+              if (s.id === sessionId) {
+                const msgs = s.messages.map((m) => {
+                  if (m.id === assistantMessageId) {
+                    return {
+                      ...m,
+                      content: errMessage,
+                      isError: true,
+                    };
+                  }
+                  return m;
+                });
+                return { ...s, messages: msgs, updatedAt: errTimestamp };
+              }
+              return s;
+            });
+            saveSessions(newSessions);
+          },
         },
-        onReasoning: (reasoningChunk) => {
-          accumulatedReasoning += reasoningChunk;
-          const liveSessions = getAppStoreSnapshot().sessions;
-          const liveUpdated = liveSessions.map((s) => {
-            if (s.id === currentSessionId) {
-              const msgs = s.messages.map((m) => {
-                if (m.id === assistantMessageId) {
-                  return { ...m, reasoning_content: accumulatedReasoning };
-                }
-                return m;
-              });
-              return { ...s, messages: msgs };
-            }
-            return s;
-          });
-          saveSessions(liveUpdated);
-        },
-        onDone: (finalContent, finalReasoning, tokens, finishReason) => {
-          setIsGenerating(false);
-          abortControllerRef.current = null;
-          const doneTimestamp = getCurrentTimestamp();
-          const liveSessions = getAppStoreSnapshot().sessions;
-          const newSessions = liveSessions.map((s) => {
-            if (s.id === currentSessionId) {
-              const msgs = s.messages.map((m) => {
-                if (m.id === assistantMessageId) {
-                  return {
-                    ...m,
-                    content: finalContent || accumulatedContent,
-                    reasoning_content: finalReasoning || accumulatedReasoning,
-                    tokens,
-                    finish_reason: finishReason,
-                  };
-                }
-                return m;
-              });
-              return { ...s, messages: msgs, updatedAt: doneTimestamp };
-            }
-            return s;
-          });
-          saveSessions(newSessions);
-        },
-        onError: (errMessage) => {
-          setIsGenerating(false);
-          abortControllerRef.current = null;
-          const errTimestamp = getCurrentTimestamp();
-          const liveSessions = getAppStoreSnapshot().sessions;
-          const newSessions = liveSessions.map((s) => {
-            if (s.id === currentSessionId) {
-              const msgs = s.messages.map((m) => {
-                if (m.id === assistantMessageId) {
-                  return {
-                    ...m,
-                    content: errMessage,
-                    isError: true,
-                  };
-                }
-                return m;
-              });
-              return { ...s, messages: msgs, updatedAt: errTimestamp };
-            }
-            return s;
-          });
-          saveSessions(newSessions);
-        },
-      },
-      controller.signal
-    );
-  };
+        controller.signal,
+        contextWindow
+      );
+    },
+    [activeProvider, activeModelId, activeSession, globalSystemPrompt, isGenerating, activeCachedModels]
+  );
+
+  // Handler: Send Message & Stream
+  const handleSendMessage = useCallback(
+    async (userContent: string, contextMessagesOverride?: ChatMessage[]) => {
+      if (!userContent.trim() || !activeSession || isGenerating) return;
+      const ctx = contextMessagesOverride ?? activeSession.messages;
+      await runGeneration(userContent, ctx, activeSession.id);
+    },
+    [activeSession, isGenerating, runGeneration]
+  );
+
+  // Handler: Respond to an Ask-the-User card and continue the agent loop
+  const handleAskAnswer = useCallback(
+    (ask: AskPayload, answer: string) => {
+      if (!activeSession || isGenerating) return;
+      const currentSessionId = activeSession.id;
+
+      // Marcar la tarjeta como respondida en el mensaje del asistente
+      const currentSessions = getAppStoreSnapshot().sessions;
+      const answeredSessions = currentSessions.map((s) => {
+        if (s.id === currentSessionId) {
+          const msgs = s.messages.map((m) =>
+            m.asks && m.asks.some((a) => a.id === ask.id)
+              ? { ...m, askAnswered: true }
+              : m
+          );
+          return { ...s, messages: msgs };
+        }
+        return s;
+      });
+      saveSessions(answeredSessions);
+
+      // Continuar el bucle: reenviar la respuesta del usuario al modelo
+      const { sessions: latestSessions } = getAppStoreSnapshot();
+      const latest = latestSessions.find((s) => s.id === currentSessionId);
+      const replyContent = `[Respondiendo a tu pregunta "${ask.question}"]\nRespuesta: ${answer}`;
+      if (latest) {
+        void runGeneration(replyContent, latest.messages, currentSessionId);
+      }
+    },
+    [activeSession, isGenerating, runGeneration]
+  );
 
   // Handler: Stop Generation
   const handleStopGeneration = () => {
@@ -523,7 +581,7 @@ export default function Home() {
     });
     saveSessions(updatedSessions);
 
-    handleSendMessage(userPrompt);
+    void handleSendMessage(userPrompt, slicedMessages);
   };
 
   // Handler: Seamlessly continue assistant response without creating broken disjoint turns
@@ -687,10 +745,26 @@ export default function Home() {
     });
     saveSessions(updatedSessions);
 
-    handleSendMessage(newContent);
+    void handleSendMessage(newContent, sliced);
   };
 
   const hasApiKey = Boolean(activeProvider.apiKey?.trim());
+
+  // Uso de la ventana de contexto (para el indicador de compactación)
+  const activeModelInfo = activeCachedModels.find((m) => m.id === activeModelId);
+  const contextWindow = windowSizeForContextLength(activeModelInfo?.context_length);
+  const contextUsage = useMemo(() => {
+    if (!activeSession) return { used: 0, window: contextWindow, percent: 0 };
+    let used = 0;
+    for (const m of activeSession.messages) {
+      used += estimateTokenCount(m.content || '') + estimateTokenCount(m.reasoning_content || '');
+    }
+    const window = windowSizeForContextLength(
+      activeCachedModels.find((mm) => mm.id === activeSession.modelId)?.context_length
+    );
+    return { used, window, percent: Math.min(100, Math.round((used / window) * 100)) };
+  }, [activeSession, activeCachedModels]);
+
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-white dark:bg-[#232323] text-neutral-900 dark:text-neutral-100 font-sans antialiased">
       {/* Sidebar Component */}
@@ -866,6 +940,7 @@ export default function Home() {
                     }
                     onOpenSettings={() => setIsSettingsOpen(true)}
                     onOpenParameters={() => setIsParametersOpen(true)}
+                    onAskAnswer={handleAskAnswer}
                   />
                 );
               })}
@@ -884,6 +959,30 @@ export default function Home() {
 
         {/* Bottom Floating Chat Input */}
         <div className="w-full flex-shrink-0 z-10">
+          {activeSession && activeSession.messages.length > 0 && (
+            <div className="max-w-4xl mx-auto px-4 pt-1 pb-1">
+              <div className="flex items-center gap-2 text-[10px] text-neutral-400 dark:text-neutral-500">
+                <span className="whitespace-nowrap">
+                  Contexto: {contextUsage.percent}%
+                </span>
+                <div className="flex-1 h-1 rounded-full bg-neutral-200 dark:bg-neutral-800 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${
+                      contextUsage.percent >= 90
+                        ? 'bg-red-500'
+                        : contextUsage.percent >= 70
+                        ? 'bg-amber-500'
+                        : 'bg-accent'
+                    }`}
+                    style={{ width: `${Math.max(2, contextUsage.percent)}%` }}
+                  />
+                </div>
+                <span className="whitespace-nowrap font-mono">
+                  {contextUsage.used.toLocaleString()} / {contextUsage.window.toLocaleString()} tok
+                </span>
+              </div>
+            </div>
+          )}
           <ChatInput
             onSendMessage={handleSendMessage}
             onStopGeneration={handleStopGeneration}

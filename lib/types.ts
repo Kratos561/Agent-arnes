@@ -21,6 +21,15 @@ export interface ModelInfo {
   created?: number;
 }
 
+export interface AskPayload {
+  id: string;
+  question: string;
+  options?: string[];
+  multiple?: boolean;
+  placeholder?: string;
+  hideOptions?: boolean;
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
@@ -35,6 +44,8 @@ export interface ChatMessage {
   };
   finish_reason?: string; // 'length' | 'stop' | 'content_filter'
   isError?: boolean;
+  asks?: AskPayload[];
+  askAnswered?: boolean;
 }
 
 export interface ChatSession {
@@ -53,19 +64,22 @@ export interface ChatSession {
 export interface ModelParameters {
   temperature: number;
   top_p: number;
-  max_tokens: number;
+  max_tokens: number; // 0 = Auto / Ilimitado (usa el máximo nativo del modelo)
   presence_penalty: number;
   frequency_penalty: number;
   stream: boolean;
+  auto_continue?: boolean;
+  reasoning_effort?: 'low' | 'medium' | 'high' | 'auto';
 }
 
 export const DEFAULT_PARAMETERS: ModelParameters = {
   temperature: 0.7,
   top_p: 1.0,
-  max_tokens: 8192,
+  max_tokens: 0, // 0 = Sin límite artificial; máxima libertad de tokens para razonamiento y respuesta completa
   presence_penalty: 0,
   frequency_penalty: 0,
   stream: true,
+  auto_continue: true,
 };
 
 export const PRESET_PROVIDERS: ProviderConfig[] = [

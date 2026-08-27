@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Check, 
   Copy, 
@@ -15,8 +15,9 @@ import {
   Brain,
   Settings
 } from 'lucide-react';
-import { ChatMessage } from '@/lib/types';
+import { ChatMessage, AskPayload } from '@/lib/types';
 import { StreamRenderer } from '@/components/StreamRenderer';
+import { AskCard } from '@/components/AskCard';
 
 interface ChatMessageItemProps {
   message: ChatMessage;
@@ -26,6 +27,7 @@ interface ChatMessageItemProps {
   onEdit?: (newContent: string) => void;
   onOpenSettings?: () => void;
   onOpenParameters?: () => void;
+  onAskAnswer?: (ask: AskPayload, answer: string) => void;
 }
 
 export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
@@ -36,12 +38,22 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
   onEdit,
   onOpenSettings,
   onOpenParameters,
+  onAskAnswer,
 }) => {
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editedText, setEditedText] = useState(message.content);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [isReasoningOpen, setIsReasoningOpen] = useState(false);
+
+  const isThinking = isStreaming && !!message.reasoning_content && !message.content;
+
+  // Auto-expandir el panel de razonamiento mientras el modelo "piensa" en streaming
+  useEffect(() => {
+    if (isStreaming && message.reasoning_content) {
+      setIsReasoningOpen(true);
+    }
+  }, [isStreaming, message.reasoning_content]);
 
   const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
@@ -144,8 +156,19 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
                 className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200/40 dark:hover:bg-neutral-800/40 transition-colors"
               >
                 <div className="flex items-center gap-2">
-                  <Brain className="w-3.5 h-3.5 text-indigo-500 animate-pulse" />
-                  <span>Proceso de Pensamiento / Razonamiento</span>
+                  <Brain className={`w-3.5 h-3.5 text-indigo-500 ${isThinking ? 'animate-pulse' : ''}`} />
+                  {isThinking ? (
+                    <span className="inline-flex items-center gap-1.5 font-semibold text-indigo-500">
+                      Pensando
+                      <span className="inline-flex gap-0.5">
+                        <span className="w-1 h-1 rounded-full bg-current animate-bounce" style={{ animationDelay: '0ms' }} />
+                        <span className="w-1 h-1 rounded-full bg-current animate-bounce" style={{ animationDelay: '150ms' }} />
+                        <span className="w-1 h-1 rounded-full bg-current animate-bounce" style={{ animationDelay: '300ms' }} />
+                      </span>
+                    </span>
+                  ) : (
+                    <span>Proceso de Pensamiento / Razonamiento</span>
+                  )}
                 </div>
                 {isReasoningOpen ? (
                   <ChevronDown className="w-3.5 h-3.5" />
@@ -155,7 +178,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
               </button>
               {isReasoningOpen && (
                 <div className="p-3 text-xs text-neutral-600 dark:text-neutral-400 font-mono whitespace-pre-wrap border-t border-neutral-200 dark:border-neutral-800 bg-white/40 dark:bg-black/20 max-h-64 overflow-y-auto">
-                  {message.reasoning_content}
+                  {message.reasoning_content || (isThinking ? 'Razonando…' : '')}
                 </div>
               )}
             </div>
@@ -282,6 +305,20 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
               {isStreaming && (
                 <span className="typing-cursor text-accent font-bold ml-1">▎</span>
               )}
+            </div>
+          )}
+
+          {/* Ask-the-User interactive cards */}
+          {isAssistant && message.asks && message.asks.length > 0 && !message.askAnswered && !isStreaming && !message.isError && (
+            <div className="flex flex-col gap-2">
+              {message.asks.map((ask) => (
+                <AskCard
+                  key={ask.id}
+                  ask={ask}
+                  disabled={!onAskAnswer}
+                  onAnswer={(a, answer) => onAskAnswer && onAskAnswer(a, answer)}
+                />
+              ))}
             </div>
           )}
 
