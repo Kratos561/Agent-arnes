@@ -456,12 +456,18 @@ export default function Home() {
         {
           onChunk: (chunk) => {
             accumulatedContent += chunk;
+            // Strip visible tool call artifacts during streaming for cleaner display
+            const displayContent = accumulatedContent
+              .replace(/Tool call quote block:\s*/gi, '')
+              .replace(/\*\*Tool call quote block:\*\*\s*/gi, '')
+              .replace(/(?:^|\n)\s*(?:Tool|Herramienta):\s*\w+\s+\w+:[^\n]*(?:\n\s*\w+:[^\n]*)*/gi, '');
             const liveSessions = getAppStoreSnapshot().sessions;
             const liveUpdated = liveSessions.map((s) => {
               if (s.id === sessionId) {
                 const msgs = s.messages.map((m) => {
                   if (m.id === assistantMessageId) {
-                    return { ...m, content: accumulatedContent };
+                    // Use displayContent for live rendering (clean), keep accumulated for processing
+                    return { ...m, content: displayContent, _raw: accumulatedContent };
                   }
                   return m;
                 });
@@ -494,7 +500,12 @@ export default function Home() {
             const doneTimestamp = getCurrentTimestamp();
             let combined = finalContent || accumulatedContent;
 
-            // Process :::tool blocks silently — execute searches, render charts
+            // Pre-clean: remove visible tool call artifacts
+            combined = combined
+              .replace(/Tool call quote block:\s*/gi, '')
+              .replace(/\*\*Tool call quote block:\*\*\s*/gi, '');
+
+            // Process :::tool blocks + natural language tool calls silently
             if (hasToolBlocks(combined)) {
               try {
                 const { cleanText } = await processToolBlocks(combined);

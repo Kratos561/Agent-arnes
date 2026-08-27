@@ -583,7 +583,7 @@ function truncate(s: string, n: number): string {
 }
 
 // ============================================================================
-// 8) Web Search (DuckDuckGo Instant Answer API - free, no key)
+// 8) Web Search (DuckDuckGo - Instant Answer + HTML fallback + Lite)
 // ============================================================================
 
 export interface SearchResult {
@@ -597,55 +597,155 @@ export interface SearchResult {
   infobox: string;
 }
 
+interface ParsedResult {
+  title: string;
+  snippet: string;
+  url: string;
+}
+
+function parseDDGHtml(html: string): ParsedResult[] {
+  const results: ParsedResult[] = [];
+  const resultRegex = /<a[^>]+class="result__a"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = resultRegex.exec(html)) !== null && results.length < 10) {
+    const url = m[1] || '';
+    const title = (m[2] || '').replace(/<[^>]+>/g, '').trim();
+    const snippet = (m[3] || '').replace(/<[^>]+>/g, '').trim();
+    if (title && url) results.push({ title, snippet, url });
+  }
+  // Also try simpler pattern
+  if (results.length === 0) {
+    const simpleRegex = /<li class="result__body">[\s\S]*?<a[^>]+href="([^"]*)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<span class="result__snippet">([\s\S]*?)<\/span>/gi;
+    while ((m = simpleRegex.exec(html)) !== null && results.length < 10) {
+      const url = m[1] || '';
+      const title = (m[2] || '').replace(/<[^>]+>/g, '').trim();
+      const snippet = (m[3] || '').replace(/<[^>]+>/g, '').trim();
+      if (title) results.push({ title, snippet, url });
+    }
+  }
+  return results;
+}
+
+function parseLiteDDGHtml(html: string): ParsedResult[] {
+  const results: ParsedResult[] = [];
+  const regex = /<a[^>]+class="result-link"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<td class="result-snippet">([\s\S]*?)<\/td>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = regex.exec(html)) !== null && results.length < 10) {
+    results.push({
+      url: m[1] || '',
+      title: (m[2] || '').replace(/<[^>]+>/g, '').trim(),
+      snippet: (m[3] || '').replace(/<[^>]+>/g, '').trim(),
+    });
+  }
+  return results;
+}
+
+async function searchDDGLite(query: string): Promise<ParsedResult[]> {
+  try {
+    const resp = await fetch(`https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(query)}`, {
+      signal: AbortSignal.timeout(8000),
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+    });
+    const html = await resp.text();
+    return parseLiteDDGHtml(html);
+  } catch { return []; }
+}
+
+async function searchDDGHtml(query: string): Promise<ParsedResult[]> {
+  try {
+    const resp = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, {
+      signal: AbortSignal.timeout(8000),
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+    });
+    const html = await resp.text();
+    return parseDDGHtml(html);
+  } catch { return []; }
+}
+
+async function searchWikipedia(query: string): Promise<string> {
+  try {
+    const resp = await fetch(`https://es.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(query)}`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!resp.ok) return '';
+    const data = await resp.json();
+    if (data.extract) {
+      return `\n### Wikipedia: ${data.title}\n${data.extract}\n${data.content_urls?.desktop?.page || ''}\n`;
+    }
+    return '';
+  } catch { return ''; }
+}
+
 export async function webSearch(query: string): Promise<string> {
+  const parts: string[] = [];
+  parts.push(`## Resultados de busqueda: "${query}"\n`);
+
+  // 1. Try Instant Answer API
   try {
     const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
-    const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    if (!resp.ok) return `Error HTTP ${resp.status} al buscar "${query}"`;
-    const data: SearchResult = await resp.json();
-
-    const parts: string[] = [];
-    parts.push(`## Resultados para: "${query}"\n`);
-
-    if (data.Abstract) {
-      parts.push(`### ${data.Heading || data.AbstractSource || 'Resultado'}`);
-      parts.push(data.Abstract);
-      if (data.AbstractURL) parts.push(`Fuente: ${data.AbstractURL}`);
-      parts.push('');
-    }
-
-    if (data.Answer) {
-      parts.push(`### Respuesta directa`);
-      parts.push(data.Answer);
-      parts.push('');
-    }
-
-    if (data.RelatedTopics && data.RelatedTopics.length > 0) {
-      parts.push(`### Temas relacionados`);
-      for (const t of data.RelatedTopics.slice(0, 8)) {
-        if (t.Text) {
-          parts.push(`- ${t.Text}`);
-          if (t.FirstURL) parts.push(`  ${t.FirstURL}`);
-        }
+    const resp = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    if (resp.ok) {
+      const data: SearchResult = await resp.json();
+      if (data.Abstract) {
+        parts.push(`### ${data.Heading || data.AbstractSource || 'Resultado'}`);
+        parts.push(data.Abstract);
+        if (data.AbstractURL) parts.push(`Fuente: ${data.AbstractURL}`);
+        parts.push('');
       }
+      if (data.Answer) {
+        parts.push(`### Respuesta directa`);
+        parts.push(data.Answer);
+        parts.push('');
+      }
+      if (data.RelatedTopics && data.RelatedTopics.length > 0) {
+        parts.push(`### Temas relacionados`);
+        for (const t of data.RelatedTopics.slice(0, 6)) {
+          if (t.Text) {
+            parts.push(`- ${t.Text}`);
+            if (t.FirstURL) parts.push(`  ${t.FirstURL}`);
+          }
+        }
+        parts.push('');
+      }
+    }
+  } catch { /* continue */ }
+
+  // 2. HTML scraping fallback for full web results
+  const htmlResults = await searchDDGHtml(query);
+  if (htmlResults.length > 0) {
+    parts.push(`### Paginas web encontradas`);
+    for (const r of htmlResults.slice(0, 8)) {
+      parts.push(`**${r.title}**`);
+      if (r.snippet) parts.push(`${r.snippet}`);
+      if (r.url) parts.push(`${r.url}`);
       parts.push('');
     }
-
-    if (data.infobox) {
-      parts.push(`### Informacion`);
-      parts.push(data.infobox);
-    }
-
-    if (parts.length === 1) {
-      parts.push(`No se encontraron resultados instantaneos para "${query}".`);
-      parts.push(`Intenta con una consulta mas especifica.`);
-    }
-
-    return parts.join('\n');
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Error desconocido';
-    return `Error al buscar "${query}": ${msg}`;
   }
+
+  // 3. Lite DDG as backup
+  if (htmlResults.length < 3) {
+    const liteResults = await searchDDGLite(query);
+    if (liteResults.length > 0) {
+      parts.push(`### Mas resultados`);
+      for (const r of liteResults.slice(0, 5)) {
+        parts.push(`**${r.title}**`);
+        if (r.snippet) parts.push(`${r.snippet}`);
+        if (r.url) parts.push(`${r.url}`);
+        parts.push('');
+      }
+    }
+  }
+
+  // 4. Wikipedia context
+  const wikiResult = await searchWikipedia(query.split(' ')[0]);
+  if (wikiResult) parts.push(wikiResult);
+
+  if (parts.length === 1) {
+    parts.push(`No se encontraron resultados para "${query}".`);
+    parts.push(`Intenta con una consulta mas especifica o en ingles.`);
+  }
+
+  return parts.join('\n');
 }
 
 // ============================================================================

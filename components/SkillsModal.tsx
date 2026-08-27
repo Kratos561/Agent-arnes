@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { X, Trash2, ToggleLeft, ToggleRight, Sparkles, Upload, FileText, Clipboard } from 'lucide-react';
 import { AgentSkill, skillFromSkillMd, skillToSkillMd } from '@/lib/agent-infra';
 
@@ -12,12 +12,22 @@ interface SkillsModalProps {
 }
 
 export const SkillsModal: React.FC<SkillsModalProps> = ({ isOpen, onClose, skills, onSaveSkills }) => {
-  const [localSkills, setLocalSkills] = useState<AgentSkill[]>([...skills]);
+  const [localSkills, setLocalSkills] = useState<AgentSkill[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [pasteMode, setPasteMode] = useState(false);
   const [pasteContent, setPasteContent] = useState('');
   const [parseError, setParseError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setLocalSkills([...skills]);
+      setExpandedId(null);
+      setPasteMode(false);
+      setPasteContent('');
+      setParseError('');
+    }
+  }, [isOpen, skills]);
 
   if (!isOpen) return null;
 
@@ -57,7 +67,7 @@ export const SkillsModal: React.FC<SkillsModalProps> = ({ isOpen, onClose, skill
       setPasteContent('');
       setPasteMode(false);
     } else {
-      setParseError('No se pudo parsear. Formato esperado:\\n---\\nname: skill-name\\ndescription: Cuando usar...\\n---\\n\\nInstrucciones markdown...');
+      setParseError('No se pudo parsear. Formato esperado:\n---\nname: skill-name\ndescription: Cuando usar...\n---\n\nInstrucciones markdown...');
     }
   };
 
@@ -78,9 +88,8 @@ export const SkillsModal: React.FC<SkillsModalProps> = ({ isOpen, onClose, skill
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
       <div className="w-full max-w-2xl bg-white dark:bg-[#1e1e1e] border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50/50 dark:bg-[#181818]/50">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-purple-500/10 text-purple-500 flex items-center justify-center">
@@ -96,7 +105,6 @@ export const SkillsModal: React.FC<SkillsModalProps> = ({ isOpen, onClose, skill
           </button>
         </div>
 
-        {/* Skills List */}
         <div className="flex-1 overflow-y-auto p-6 space-y-2">
           {localSkills.length === 0 && (
             <div className="text-center py-8 text-neutral-400 text-sm">
@@ -118,7 +126,7 @@ export const SkillsModal: React.FC<SkillsModalProps> = ({ isOpen, onClose, skill
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 min-w-0 flex-1">
                   <button type="button" onClick={() => handleToggle(skill.id)} className="flex-shrink-0">
-                    {skill.enabled ? <ToggleRight className="w-5 h-5 text-accent" /> : <ToggleLeft className="w-5 h-5 text-neutral-400" />}
+                    {skill.enabled ? <ToggleRight className="w-5 h-5 text-purple-500" /> : <ToggleLeft className="w-5 h-5 text-neutral-400" />}
                   </button>
                   <div className="min-w-0">
                     <span className="text-sm font-medium text-neutral-900 dark:text-neutral-100 block truncate">{skill.name}</span>
@@ -156,7 +164,6 @@ export const SkillsModal: React.FC<SkillsModalProps> = ({ isOpen, onClose, skill
             </div>
           ))}
 
-          {/* Paste Mode */}
           {pasteMode ? (
             <div className="p-4 rounded-xl border border-purple-500/30 bg-purple-50/30 dark:bg-purple-950/20 space-y-3">
               <textarea
@@ -186,7 +193,6 @@ export const SkillsModal: React.FC<SkillsModalProps> = ({ isOpen, onClose, skill
           <input ref={fileInputRef} type="file" accept=".md,.markdown,.txt" multiple className="hidden" onChange={handleFileUpload} />
         </div>
 
-        {/* Footer */}
         <div className="px-6 py-3.5 border-t border-neutral-200 dark:border-neutral-800 bg-neutral-50/50 dark:bg-[#181818]/50 flex items-center justify-between">
           <span className="text-[11px] text-neutral-400">{localSkills.filter((s) => s.enabled).length} de {localSkills.length} skills activas</span>
           <div className="flex items-center gap-2">

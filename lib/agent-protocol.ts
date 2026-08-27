@@ -23,6 +23,7 @@
 import { AskPayload } from './types';
 
 const ASK_OPEN = ':::ask';
+const ASK_OPEN_ALT = ':::id';
 const ASK_CLOSE = ':::';
 
 export interface ParsedAsk {
@@ -52,11 +53,11 @@ function extractJSON(raw: string): AskPayload | null {
 }
 
 /**
- * Extrae todos los bloques `ask` del contenido del asistente, eliminándolos
- * del texto visible. Devuelve el texto "limpio" y la lista de preguntas.
+ * Extrae todos los bloques ask del contenido del asistente, eliminándolos
+ * del texto visible. Soporta tanto :::ask como :::id.
  */
 export function parseAskBlocks(content: string): ParsedAsk {
-  if (!content || !content.includes(ASK_OPEN)) {
+  if (!content || (!content.includes(ASK_OPEN) && !content.includes(ASK_OPEN_ALT))) {
     return { asks: [], text: content || '', consumed: false };
   }
   const asks: AskPayload[] = [];
@@ -65,24 +66,46 @@ export function parseAskBlocks(content: string): ParsedAsk {
   let consumed = false;
 
   while (true) {
-    const openIdx = content.indexOf(ASK_OPEN, cursor);
+    // Find next ask block (either :::ask or :::id)
+    const openIdxAsk = content.indexOf(ASK_OPEN, cursor);
+    const openIdxId = content.indexOf(ASK_OPEN_ALT, cursor);
+    let openIdx: number;
+    let openLen: number;
+    if (openIdxAsk === -1 && openIdxId === -1) {
+      openIdx = -1;
+      openLen = 0;
+    } else if (openIdxAsk === -1) {
+      openIdx = openIdxId;
+      openLen = ASK_OPEN_ALT.length;
+    } else if (openIdxId === -1) {
+      openIdx = openIdxAsk;
+      openLen = ASK_OPEN.length;
+    } else {
+      if (openIdxAsk < openIdxId) {
+        openIdx = openIdxAsk;
+        openLen = ASK_OPEN.length;
+      } else {
+        openIdx = openIdxId;
+        openLen = ASK_OPEN_ALT.length;
+      }
+    }
+
     if (openIdx === -1) {
       outputParts.push(content.substring(cursor));
       break;
     }
     outputParts.push(content.substring(cursor, openIdx));
 
-    const afterOpen = openIdx + ASK_OPEN.length;
+    const afterOpen = openIdx + openLen;
     const openLineEnd = content.indexOf('\n', afterOpen);
     const blockStart = openLineEnd === -1 ? content.length : openLineEnd + 1;
 
-    // Buscar el cierre en una línea independiente (ignora el primer `:::` delimitador)
+    // Search for closing ::: on its own line
     let closeIdx = -1;
     let searchFrom = blockStart;
     while (searchFrom < content.length) {
       const candidate = content.indexOf(ASK_CLOSE, searchFrom);
       if (candidate === -1) break;
-      // El cierre debe estar al inicio de línea (o ser el final del texto)
       const lineStart = content.lastIndexOf('\n', candidate - 1) + 1;
       const before = content.substring(lineStart, candidate);
       if (before.trim() === '') {
@@ -93,7 +116,6 @@ export function parseAskBlocks(content: string): ParsedAsk {
     }
 
     if (closeIdx === -1) {
-      // Bloque sin cerrar: tratamos el resto como texto visible
       outputParts.push(content.substring(afterOpen));
       break;
     }
@@ -104,7 +126,6 @@ export function parseAskBlocks(content: string): ParsedAsk {
       asks.push(ask);
       consumed = true;
     } else {
-      // No era un ask válido; conservamos el texto literal
       outputParts.push(content.substring(openIdx, closeIdx + ASK_CLOSE.length));
     }
 
@@ -120,17 +141,19 @@ export function parseAskBlocks(content: string): ParsedAsk {
  * modelo sepa cuándo y cómo hacer preguntas al usuario.
  */
 export const ASK_PROTOCOL_INSTRUCTIONS = `## Protocolo "Ask the User" (preguntar al humano)
-Eres un agente proactivo: cuando necesites una decisión, preferencia o dato que solo el usuario puede aportar, NO inventes ni supongas. Pausa y pregunta.
+Eres un agente proactivo: cuando necesites una decision, preferencia o dato que solo el usuario puede aportar, NO inventes ni supongas. Pausa y pregunta.
 
-Para preguntar, emite un bloque \`ask\` en tu respuesta con formato JSON:
+Para preguntar, emite un bloque ASK en tu respuesta con formato JSON EXACTO:
+
 :::ask
-{"id":"pregunta1","question":"Escribe aquí la pregunta concreta","options":["Opción A","Opción B"],"multiple":false}
+{"id":"pregunta1","question":"Escribe aqui la pregunta concreta","options":["Opcion A","Opcion B"],"multiple":false}
 :::
 
-Reglas:
-- IDENTIFICA cada pregunta con un \`id\` corto y único (ej: "pregunta1").
-- Usa \`options\` cuando haya 2-6 respuestas discretas que se puedan tocar (recomendado).
-- Usa \`multiple:true\` solo si el usuario debe poder elegir varias.
-- Si la respuesta es abierta (texto, cantidad, explicación), omite \`options\` y deja solo \`question\`.
-- Puedes emitir texto normal ANTES del bloque \`ask\` (contexto) y DESPUÉS (indicaciones), pero recuerda: nada de lo que escribas tras la pregunta se ejecuta hasta que responda.
-- Cuando el usuario responda, continuarás automáticamente con la misma conversación.`;
+REGLAS:
+- IDENTIFICA cada pregunta con un id corto y unico (ej: "pregunta1").
+- Usa options cuando haya 2-6 respuestas discretas que se puedan tocar (recomendado).
+- Usa multiple:true solo si el usuario debe poder elegir varias.
+- Si la respuesta es abierta (texto, cantidad, explicacion), omite options y deja solo question.
+- Puedes emitir texto normal ANTES del bloque ask (contexto) y DESPUES (indicaciones), pero recuerda: nada de lo que escribas tras la pregunta se ejecuta hasta que responda.
+- Cuando el usuario responda, continuaras automaticamente con la misma conversacion.
+- NO uses :::id como delimitador — usa SIEMPRE :::ask y ::: para abrir y cerrar.`;

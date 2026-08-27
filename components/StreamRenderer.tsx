@@ -42,7 +42,15 @@ export const StreamRenderer: React.FC<StreamRendererProps> = ({
 
   const sanitizedContent = useMemo(() => {
     const rawToRender = isStreaming ? debouncedContent : content;
-    return sanitizeMathDelimiters(rawToRender);
+    // Strip tool/ask/protocol blocks that should have been processed by interceptor
+    // Keep :::chart blocks — they are detected and rendered by InlineChart below
+    const cleaned = rawToRender
+      .replace(/:::tool\s*\n\{[\s\S]*?\}\n:::/g, '')
+      .replace(/:::ask\s*\n\{[\s\S]*?\}\n:::/g, '')
+      .replace(/:::id\s*\n\{[\s\S]*?\}\n:::/g, '')
+      .replace(/Tool call quote block:\s*/gi, '')
+      .replace(/\*\*Tool call quote block:\*\*\s*/gi, '');
+    return sanitizeMathDelimiters(cleaned);
   }, [debouncedContent, content, isStreaming]);
 
   const detectedMultiFiles = useMemo(() => {
@@ -62,7 +70,6 @@ export const StreamRenderer: React.FC<StreamRendererProps> = ({
 
   // Detect :::chart blocks and split content for inline rendering
   const { parts, charts } = useMemo(() => {
-    if (isStreaming) return { parts: [sanitizedContent], charts: [] };
     const chartRegex = /:::chart\n([\s\S]*?)\n:::/g;
     const chartParts: Array<{ index: number; data: ChartData; chartType: ChartType; title?: string; subtitle?: string }> = [];
     const segments: string[] = [];
