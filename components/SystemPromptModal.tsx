@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, Sparkles, Wand2, Terminal, BookOpen, PenTool, Globe, Briefcase, Cpu, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
+import { X, Wand2, Terminal, BookOpen, PenTool, Globe, Briefcase, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface SystemPromptModalProps {
   isOpen: boolean;

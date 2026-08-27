@@ -1,6 +1,20 @@
 @import "tailwindcss";
 @import "katex/dist/katex.min.css";
 
+/* Tailwind v4: hacer que la variante `dark:` responda a la clase `.dark`
+   (no a la media query del sistema). Sin esto el toggle manual de tema y el
+   "modo oscuro por defecto" no reestilizan la app. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Oculta las scrollbars del header/toolbar en pantallas pequeñas sin perder scroll */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
 @layer base {
   :root {
     --bg-primary: #ffffff;

@@ -141,7 +141,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {!isEditing && (
           <div
             className={`items-center gap-1 ${
-              isActive ? 'flex' : 'hidden group-hover:flex'
+              isActive ? 'flex' : 'hidden sm:flex sm:group-hover:flex'
             }`}
             onClick={(e) => e.stopPropagation()}
           >

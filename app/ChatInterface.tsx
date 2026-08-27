@@ -50,6 +50,7 @@ import { ParametersModal } from '@/components/ParametersModal';
 import { SystemPromptModal } from '@/components/SystemPromptModal';
 import { ExportModal } from '@/components/ExportModal';
 import { ToolsModal } from '@/components/ToolsModal';
+import { SafeErrorBoundary } from '@/components/SafeErrorBoundary';
 
 export default function Home() {
   // Hydration-safe reactive store from LocalStorage
@@ -87,17 +88,25 @@ export default function Home() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Sync theme on mount
+  // Sync theme on mount — el modo oscuro es el DEFAULT (salvo que el usuario
+  // haya guardado explícitamente una preferencia en localStorage)
   useEffect(() => {
-    const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
     const savedDark = localStorage.getItem('chat_dark_mode_v1');
-    const darkModeActive = savedDark !== null ? savedDark === 'true' : isDark;
+    const darkModeActive = savedDark !== null ? savedDark === 'true' : true;
     setIsDarkMode(darkModeActive);
     if (darkModeActive) {
       document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
     }
+  }, []);
+
+  // Abortar cualquier stream en curso al desmontar (evita fugas de fetch en background)
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+      abortControllerRef.current = null;
+    };
   }, []);
 
   // Sync dark mode class
@@ -335,9 +344,10 @@ export default function Home() {
 
   // Core generation runner: añade mensaje de usuario, streamea la respuesta y parsea bloques ask
   const runGeneration = useCallback(
-    async (userContent: string, contextMessages: ChatMessage[], targetSessionId?: string) => {
+    async (userContent: string, contextMessages: ChatMessage[], targetSessionId?: string, sessionOverride?: ChatSession) => {
       if (!userContent.trim() || !activeSession || isGenerating) return;
 
+      const ver = sessionOverride || activeSession;
       const needsKey = !activeProvider.apiKey;
       if (needsKey) {
         setIsSettingsOpen(true);
@@ -400,8 +410,8 @@ export default function Home() {
         activeProvider,
         activeModelId,
         [...contextMessages, userMessage],
-        activeSession.parameters || DEFAULT_PARAMETERS,
-        activeSession.systemPrompt || globalSystemPrompt,
+        ver.parameters || DEFAULT_PARAMETERS,
+        ver.systemPrompt || globalSystemPrompt,
         {
           onChunk: (chunk) => {
             accumulatedContent += chunk;
@@ -537,7 +547,7 @@ export default function Home() {
       const latest = latestSessions.find((s) => s.id === currentSessionId);
       const replyContent = `[Respondiendo a tu pregunta "${ask.question}"]\nRespuesta: ${answer}`;
       if (latest) {
-        void runGeneration(replyContent, latest.messages, currentSessionId);
+        void runGeneration(replyContent, latest.messages, currentSessionId, latest);
       }
     },
     [activeSession, isGenerating, runGeneration]
@@ -834,14 +844,14 @@ export default function Home() {
           </div>
 
           {/* Right Header Action Icons */}
-          <div className="flex items-center gap-1 sm:gap-1.5">
+          <div className="flex items-center gap-1 sm:gap-1.5 min-w-0 overflow-x-auto scrollbar-hide">
             {/* System Prompt Custom Instructions */}
             <button
               type="button"
               id="system-prompt-btn"
               onClick={() => setIsSystemPromptOpen(true)}
               title="Instrucciones del Sistema (System Prompt)"
-              className="p-2 rounded-xl text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+              className="flex-shrink-0 p-2 rounded-xl text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
             >
               <Wand2 className="w-4 h-4" />
             </button>
@@ -852,7 +862,7 @@ export default function Home() {
               id="parameters-btn"
               onClick={() => setIsParametersOpen(true)}
               title="Ajustar Parámetros (Temperatura, Tokens)"
-              className="p-2 rounded-xl text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+              className="flex-shrink-0 p-2 rounded-xl text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
             >
               <Sliders className="w-4 h-4" />
             </button>
@@ -864,7 +874,7 @@ export default function Home() {
                 id="export-chat-btn"
                 onClick={() => setIsExportOpen(true)}
                 title="Exportar conversación (.md / .json)"
-                className="p-2 rounded-xl text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                className="flex-shrink-0 p-2 rounded-xl text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
               >
                 <Share2 className="w-4 h-4" />
               </button>
@@ -877,7 +887,7 @@ export default function Home() {
                 id="clear-chat-btn"
                 onClick={handleClearCurrentSession}
                 title="Limpiar mensajes de esta conversación"
-                className="p-2 rounded-xl text-neutral-600 dark:text-neutral-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                className="flex-shrink-0 p-2 rounded-xl text-neutral-600 dark:text-neutral-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -889,7 +899,7 @@ export default function Home() {
               id="header-tools-btn"
               onClick={() => setIsToolsOpen(true)}
               title="Abrir herramientas locales"
-              className="p-2 rounded-xl text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/40 border border-blue-500/20 transition-colors flex items-center gap-1 text-xs font-semibold"
+              className="flex-shrink-0 p-2 rounded-xl text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/40 border border-blue-500/20 transition-colors flex items-center gap-1 text-xs font-semibold"
             >
               <Wrench className="w-4 h-4" />
               <span className="hidden sm:inline">Herramientas</span>
@@ -901,7 +911,7 @@ export default function Home() {
               id="header-settings-btn"
               onClick={() => setIsSettingsOpen(true)}
               title="Configurar API & Base URL"
-              className="p-2 rounded-xl text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+              className="flex-shrink-0 p-2 rounded-xl text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
             >
               <Settings className="w-4 h-4" />
             </button>
@@ -998,44 +1008,54 @@ export default function Home() {
       </main>
 
       {/* Settings Modal (Provider & Base URL & Models Explorer) */}
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        providers={providers}
-        activeProviderId={activeProviderId}
-        onUpdateProviders={(newProviders) => {
-          saveProviders(newProviders);
-        }}
-        onSelectActiveProvider={handleSelectActiveProvider}
-        onSelectActiveModel={handleSelectActiveModel}
-      />
+      <SafeErrorBoundary fallbackText="Fallo al abrir la configuración.">
+        <SettingsModal
+          isOpen={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
+          providers={providers}
+          activeProviderId={activeProviderId}
+          onUpdateProviders={(newProviders) => {
+            saveProviders(newProviders);
+          }}
+          onSelectActiveProvider={handleSelectActiveProvider}
+          onSelectActiveModel={handleSelectActiveModel}
+        />
+      </SafeErrorBoundary>
 
       {/* Hyperparameters Modal */}
       {activeSession && (
-        <ParametersModal
-          isOpen={isParametersOpen}
-          onClose={() => setIsParametersOpen(false)}
-          parameters={activeSession.parameters || DEFAULT_PARAMETERS}
-          onChangeParameters={handleUpdateParameters}
-        />
+        <SafeErrorBoundary fallbackText="Fallo al abrir los parámetros.">
+          <ParametersModal
+            isOpen={isParametersOpen}
+            onClose={() => setIsParametersOpen(false)}
+            parameters={activeSession.parameters || DEFAULT_PARAMETERS}
+            onChangeParameters={handleUpdateParameters}
+          />
+        </SafeErrorBoundary>
       )}
 
       {/* System Prompt Custom Instructions Modal */}
-      <SystemPromptModal
-        isOpen={isSystemPromptOpen}
-        onClose={() => setIsSystemPromptOpen(false)}
-        systemPrompt={activeSession?.systemPrompt || globalSystemPrompt}
-        onSaveSystemPrompt={handleSaveSystemPrompt}
-      />
+      <SafeErrorBoundary fallbackText="Fallo al abrir las instrucciones del sistema.">
+        <SystemPromptModal
+          isOpen={isSystemPromptOpen}
+          onClose={() => setIsSystemPromptOpen(false)}
+          systemPrompt={activeSession?.systemPrompt || globalSystemPrompt}
+          onSaveSystemPrompt={handleSaveSystemPrompt}
+        />
+      </SafeErrorBoundary>
 
       {/* Export Conversation Modal */}
-      <ExportModal
-        isOpen={isExportOpen}
-        onClose={() => setIsExportOpen(false)}
-        session={activeSession}
-      />
+      <SafeErrorBoundary fallbackText="Fallo al abrir la exportación.">
+        <ExportModal
+          isOpen={isExportOpen}
+          onClose={() => setIsExportOpen(false)}
+          session={activeSession}
+        />
+      </SafeErrorBoundary>
 
-      <ToolsModal isOpen={isToolsOpen} onClose={() => setIsToolsOpen(false)} />
+      <SafeErrorBoundary fallbackText="Fallo al abrir las herramientas locales.">
+        <ToolsModal isOpen={isToolsOpen} onClose={() => setIsToolsOpen(false)} />
+      </SafeErrorBoundary>
     </div>
   );
 }
