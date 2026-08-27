@@ -1,5 +1,6 @@
 import { ProviderConfig, ChatSession, ModelInfo, PRESET_PROVIDERS, VERIFIED_DEFAULT_MODELS, DEFAULT_PARAMETERS } from './types';
 import { createId } from './utils';
+import { AgentRule, AgentSkill, PersonaConfig, DEFAULT_RULES, DEFAULT_SKILLS, DEFAULT_PERSONAS } from './agent-infra';
 
 const STORAGE_KEYS = {
   PROVIDERS: 'chat_providers_v1',
@@ -10,6 +11,10 @@ const STORAGE_KEYS = {
   ACTIVE_SESSION_ID: 'chat_active_session_id_v1',
   SYSTEM_PROMPT: 'chat_system_prompt_v1',
   DARK_MODE: 'chat_dark_mode_v1',
+  AGENT_RULES: 'chat_agent_rules_v1',
+  AGENT_SKILLS: 'chat_agent_skills_v1',
+  AGENT_PERSONAS: 'chat_agent_personas_v1',
+  ACTIVE_PERSONA_ID: 'chat_active_persona_id_v1',
 };
 
 export const INITIAL_SESSION_ID = 'default_chat_session';
@@ -165,6 +170,108 @@ export function saveGlobalSystemPrompt(prompt: string) {
   notifyAppStoreUpdate({ globalSystemPrompt: prompt });
 }
 
+// --- Agent Rules ---
+export function loadAgentRules(): AgentRule[] {
+  if (typeof window === 'undefined') return DEFAULT_RULES;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.AGENT_RULES);
+    if (!raw) return DEFAULT_RULES;
+    const parsed: AgentRule[] = JSON.parse(raw);
+    if (!parsed || parsed.length === 0) return DEFAULT_RULES;
+    // Merge with defaults so new default rules are always present
+    const merged = [...DEFAULT_RULES];
+    for (const r of parsed) {
+      const idx = merged.findIndex((m) => m.id === r.id);
+      if (idx >= 0) {
+        merged[idx] = { ...merged[idx], ...r };
+      } else {
+        merged.push(r);
+      }
+    }
+    return merged;
+  } catch {
+    return DEFAULT_RULES;
+  }
+}
+
+export function saveAgentRules(rules: AgentRule[]) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(STORAGE_KEYS.AGENT_RULES, JSON.stringify(rules));
+    notifyAppStoreUpdate({ agentRules: rules });
+  } catch (e) {
+    console.error('Error saving agent rules', e);
+  }
+}
+
+// --- Agent Skills ---
+export function loadAgentSkills(): AgentSkill[] {
+  if (typeof window === 'undefined') return DEFAULT_SKILLS;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.AGENT_SKILLS);
+    if (!raw) return DEFAULT_SKILLS;
+    const parsed: AgentSkill[] = JSON.parse(raw);
+    if (!parsed || parsed.length === 0) return DEFAULT_SKILLS;
+    const merged = [...DEFAULT_SKILLS];
+    for (const s of parsed) {
+      const idx = merged.findIndex((m) => m.id === s.id);
+      if (idx >= 0) {
+        merged[idx] = { ...merged[idx], ...s };
+      } else {
+        merged.push(s);
+      }
+    }
+    return merged;
+  } catch {
+    return DEFAULT_SKILLS;
+  }
+}
+
+export function saveAgentSkills(skills: AgentSkill[]) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(STORAGE_KEYS.AGENT_SKILLS, JSON.stringify(skills));
+    notifyAppStoreUpdate({ agentSkills: skills });
+  } catch (e) {
+    console.error('Error saving agent skills', e);
+  }
+}
+
+// --- Agent Personas ---
+export function loadAgentPersonas(): PersonaConfig[] {
+  if (typeof window === 'undefined') return DEFAULT_PERSONAS;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.AGENT_PERSONAS);
+    if (!raw) return DEFAULT_PERSONAS;
+    const parsed: PersonaConfig[] = JSON.parse(raw);
+    if (!parsed || parsed.length === 0) return DEFAULT_PERSONAS;
+    return parsed;
+  } catch {
+    return DEFAULT_PERSONAS;
+  }
+}
+
+export function saveAgentPersonas(personas: PersonaConfig[]) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(STORAGE_KEYS.AGENT_PERSONAS, JSON.stringify(personas));
+    notifyAppStoreUpdate({ agentPersonas: personas });
+  } catch (e) {
+    console.error('Error saving agent personas', e);
+  }
+}
+
+export function loadActivePersonaId(): string {
+  if (typeof window === 'undefined') return 'persona-general';
+  return localStorage.getItem(STORAGE_KEYS.ACTIVE_PERSONA_ID) || 'persona-general';
+}
+
+export function saveActivePersonaId(id: string) {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(STORAGE_KEYS.ACTIVE_PERSONA_ID, id);
+  notifyAppStoreUpdate({ activePersonaId: id });
+}
+
 // --- Create New Session ---
 export function createNewSession(providerId: string, modelId: string, systemPrompt?: string): ChatSession {
   return {
@@ -189,6 +296,10 @@ export interface AppStorageState {
   sessions: ChatSession[];
   activeSessionId: string | null;
   globalSystemPrompt: string;
+  agentRules: AgentRule[];
+  agentSkills: AgentSkill[];
+  agentPersonas: PersonaConfig[];
+  activePersonaId: string;
 }
 
 const SERVER_SNAPSHOT: AppStorageState = {
@@ -199,6 +310,10 @@ const SERVER_SNAPSHOT: AppStorageState = {
   sessions: [createInitialSession()],
   activeSessionId: INITIAL_SESSION_ID,
   globalSystemPrompt: '',
+  agentRules: DEFAULT_RULES,
+  agentSkills: DEFAULT_SKILLS,
+  agentPersonas: DEFAULT_PERSONAS,
+  activePersonaId: 'persona-general',
 };
 
 let clientSnapshot: AppStorageState = SERVER_SNAPSHOT;
@@ -260,6 +375,10 @@ export function getAppStoreSnapshot(): AppStorageState {
       sessions: loadedSessions,
       activeSessionId: loadedActiveSessionId,
       globalSystemPrompt: loadGlobalSystemPrompt(),
+      agentRules: loadAgentRules(),
+      agentSkills: loadAgentSkills(),
+      agentPersonas: loadAgentPersonas(),
+      activePersonaId: loadActivePersonaId(),
     };
   }
   return clientSnapshot;

@@ -1,6 +1,7 @@
 import { ChatMessage, ModelInfo, ModelParameters, ProviderConfig } from './types';
 import { compactContext } from './compaction';
 import { ASK_PROTOCOL_INSTRUCTIONS } from './agent-protocol';
+import { assemblePrompt, AgentRule, AgentSkill, PersonaConfig } from './agent-infra';
 
 export interface StreamCallbacks {
   onChunk: (chunk: string) => void;
@@ -56,30 +57,25 @@ export async function fetchModels(provider: ProviderConfig): Promise<{ success: 
   }
 }
 
-/** Prompt de ejecución de alto rendimiento: otorga total libertad y capacidades completas al modelo. */
-export function buildHarnessSystemPrompt(provider: ProviderConfig, modelId: string, customPrompt?: string) {
-  const now = new Date().toLocaleString('es-ES');
-  const harness = [
-    '# ENTORNO DE EJECUCIÓN AGÉNTICO Y HARNESS',
-    `Estás operando en Agent Arnes, un entorno de IA de alto rendimiento con renderizado reactivo y herramientas integradas. Fecha/Hora local: ${now}.`,
-    `Proveedor activo: ${provider.name} | Modelo: ${modelId}.`,
-    '',
-    '## Capacidades y Libertad de Razonamiento:',
-    '- **Razonamiento Profundo (Chain of Thought)**: Tienes total libertad para pensar, razonar paso a paso, planificar y descomponer problemas complejos con la máxima profundidad analítica. No te limites en tu proceso de pensamiento.',
-    '- **Renderizado Enriquecido**: Utiliza Markdown estructurado, encabezados jerárquicos (##, ###), tablas formateadas, listas detalladas y notación matemática LaTeX ($...$ para inline y $$...$$ para display).',
-    '- **Artefactos y Código Completo**: Genera código fuente completo, tipado, modular y listo para producción en bloques etiquetados (ej: ```typescript, ```python, ```sql, ```json, ```html, ```css, ```bash). Evita fragmentos incompletos o placeholders.',
-    '- **Generación de Documentos y Reportes**: Cuando se te soliciten informes, reportes o datasets, redacta entregables completos con estructura profesional, tablas de métricas y conclusiones claras.',
-    '',
-    '## Suite de Herramientas del Entorno:',
-    '- El entorno cuenta con una suite interactiva de herramientas de navegador que incluye ejecutor de código JavaScript/TypeScript en sandbox, motor relacional SQL, transformador de formatos (JSON/YAML/CSV/XML), comprobador de expresiones regulares, suite de criptografía y hashing, evaluador de fórmulas matemáticas y comparador de diffs.',
-    '',
-    '## Directrices de Calidad:',
-    '- Proporciona soluciones directas, elegantes y exhaustivas adaptadas al idioma del usuario.',
-    '- Asegura que las respuestas sean completas y no se corten prematuramente.',
-    '',
-    ASK_PROTOCOL_INSTRUCTIONS,
-  ].join('\n');
-  return customPrompt?.trim() ? `${harness}\n\n# INSTRUCCIONES PERSONALIZADAS DEL USUARIO:\n${customPrompt.trim()}` : harness;
+/** Prompt de ejecución de alto rendimiento: ensambla el system prompt con todas las secciones del harness. */
+export function buildHarnessSystemPrompt(
+  provider: ProviderConfig,
+  modelId: string,
+  customPrompt?: string,
+  activeRules?: AgentRule[],
+  activeSkills?: AgentSkill[],
+  persona?: PersonaConfig,
+  sessionPrompt?: string,
+) {
+  return assemblePrompt({
+    provider,
+    modelId,
+    customPrompt,
+    activeRules: activeRules || [],
+    activeSkills: activeSkills || [],
+    persona: persona || { id: 'default', name: 'Default', text: '', isActive: true },
+    sessionPrompt,
+  });
 }
 
 function extractDelta(payload: Record<string, any>) {
@@ -102,6 +98,10 @@ export async function sendChatMessageStream(
   callbacks: StreamCallbacks,
   signal?: AbortSignal,
   contextWindow?: number,
+  agentRules?: AgentRule[],
+  agentSkills?: AgentSkill[],
+  persona?: PersonaConfig,
+  sessionPrompt?: string,
 ): Promise<void> {
   let content = '';
   let reasoning = '';
@@ -112,7 +112,7 @@ export async function sendChatMessageStream(
 
   try {
     const formatted = [
-      { role: 'system', content: buildHarnessSystemPrompt(provider, modelId, customSystemPrompt) },
+      { role: 'system', content: buildHarnessSystemPrompt(provider, modelId, customSystemPrompt, agentRules, agentSkills, persona, sessionPrompt) },
       ...messages.filter((message) => !message.isError && message.content.trim()).map((message) => ({ role: message.role, content: message.content })),
     ];
 
