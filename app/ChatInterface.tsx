@@ -558,19 +558,19 @@ export default function Home() {
     const snippet = initialContent.slice(-120).trim();
     const continuationUserPrompt = snippet
       ? `Continúa exactamente desde donde te quedaste: "...${snippet}". Escribe la continuación del código y explicación de forma fluida y directa, sin repetir lo anterior.`
-      : `Continúa la respuesta anterior y completa el código restante sin repetir lo anterior.`;
+      : `Has completado el análisis y razonamiento previo. Procede ahora a redactar la respuesta completa, detallada y el código final para el usuario.`;
 
     const messagesToSend: ChatMessage[] = [
       ...contextMessages,
       {
         id: targetMsg.id,
         role: 'assistant',
-        content: initialContent || initialReasoning,
+        content: initialContent,
         reasoning_content: initialReasoning,
         timestamp: targetMsg.timestamp,
       },
       {
-        id: createId(),
+        id: createId('msg_u'),
         role: 'user',
         content: continuationUserPrompt,
         timestamp: getCurrentTimestamp(),
@@ -690,10 +690,7 @@ export default function Home() {
     handleSendMessage(newContent);
   };
 
-  const hasApiKey = Boolean(
-    activeProvider.apiKey?.trim()
-  );
-
+  const hasApiKey = Boolean(activeProvider.apiKey?.trim());
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-white dark:bg-[#212121] text-neutral-900 dark:text-neutral-100 font-sans antialiased">
       {/* Sidebar Component */}
