@@ -587,13 +587,13 @@ function truncate(s: string, n: number): string {
 // ============================================================================
 
 export interface SearchResult {
-  heading: string;
-  abstract: string;
-  abstractSource: string;
-  abstractURL: string;
-  answer: string;
-  answerType: string;
-  relatedTopics: Array<{ text: string; FirstURL: string }>;
+  Heading: string;
+  Abstract: string;
+  AbstractSource: string;
+  AbstractURL: string;
+  Answer: string;
+  AnswerType: string;
+  RelatedTopics: Array<{ Text: string; FirstURL: string }>;
   infobox: string;
 }
 
@@ -608,9 +608,9 @@ export async function webSearch(query: string): Promise<string> {
     parts.push(`## Resultados para: "${query}"\n`);
 
     if (data.Abstract) {
-      parts.push(`### ${data.heading || data.AbstractSource || 'Resultado'}`);
+      parts.push(`### ${data.Heading || data.AbstractSource || 'Resultado'}`);
       parts.push(data.Abstract);
-      if (data.abstractURL) parts.push(`Fuente: ${data.abstractURL}`);
+      if (data.AbstractURL) parts.push(`Fuente: ${data.AbstractURL}`);
       parts.push('');
     }
 
