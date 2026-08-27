@@ -1,12 +1,8 @@
 @import "tailwindcss";
 @import "katex/dist/katex.min.css";
 
-/* Tailwind v4: hacer que la variante `dark:` responda a la clase `.dark`
-   (no a la media query del sistema). Sin esto el toggle manual de tema y el
-   "modo oscuro por defecto" no reestilizan la app. */
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* Oculta las scrollbars del header/toolbar en pantallas pequeñas sin perder scroll */
 .scrollbar-hide {
   -ms-overflow-style: none;
   scrollbar-width: none;
@@ -23,47 +19,50 @@
     --text-primary: #0d0d0d;
     --text-secondary: #676767;
     --border-color: #e5e5e5;
-    /* DeepSeek accent (light) */
     --accent: #4768d9;
     --accent-hover: #3b5cc7;
     --accent-soft: #eef1fb;
     --accent-soft-border: #d5ddf5;
+    --thinking-bg: #f7f8fa;
+    --thinking-border: #e2e5ea;
+    --code-bg: #1e1e1e;
+    --code-header: #2d2d2d;
+    --code-border: #383838;
   }
 
   .dark {
-    /* DeepSeek bluish dark palette */
     --bg-primary: #232323;
     --bg-secondary: #1c1c1d;
     --bg-tertiary: #2c2c2e;
     --text-primary: #ececf0;
     --text-secondary: #a6a6ad;
     --border-color: rgba(255, 255, 255, 0.08);
-    /* DeepSeek accent (dark) ~ #4D96FF family */
     --accent: #4d96ff;
     --accent-hover: #67a6ff;
     --accent-soft: rgba(77, 150, 255, 0.12);
     --accent-soft-border: rgba(77, 150, 255, 0.35);
-    /* Bluish surfaces (DeepSeek harness) */
     --surface-sidebar: #1e1e1f;
     --surface-input: #1c1c1d;
     --surface-bubble: #3f3f41;
     --surface-header: #232323;
+    --thinking-bg: #161617;
+    --thinking-border: #2a2a2c;
+    --code-bg: #1a1a1c;
+    --code-header: #242426;
+    --code-border: #333335;
   }
 }
 
-/* Body background tinted bluish in dark mode */
 .dark body {
   background-color: #232323;
 }
 
-/* DeepSeek accent utilities (work with dark: variants via theme) */
 @theme inline {
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
   --color-accent-soft: var(--accent-soft);
 }
 
-/* Remap the emerald ramp to the DeepSeek blue accent scale */
 @theme {
   --color-emerald-50: #eef4ff;
   --color-emerald-100: #dbe8ff;
@@ -78,7 +77,6 @@
   --color-emerald-950: #17295b;
 }
 
-/* Custom smooth scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -97,109 +95,342 @@
   background: rgba(150, 150, 150, 0.5);
 }
 
-/* Highlight.js styling for dark & light mode */
-pre code.hljs {
-  display: block;
+/* ===== MARKDOWN RESPONSE TYPOGRAPHY ===== */
+/* DeepSeek-style clean response formatting */
+.stream-renderer {
+  font-size: 0.9375rem;
+  line-height: 1.75;
+  letter-spacing: -0.01em;
+  word-break: break-word;
+}
+
+.stream-renderer p {
+  margin: 0.625em 0;
+}
+
+.stream-renderer p:first-child {
+  margin-top: 0;
+}
+
+.stream-renderer p:last-child {
+  margin-bottom: 0;
+}
+
+.stream-renderer h1 {
+  font-size: 1.5em;
+  font-weight: 700;
+  margin: 1.25em 0 0.5em;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.stream-renderer h2 {
+  font-size: 1.25em;
+  font-weight: 650;
+  margin: 1.1em 0 0.4em;
+  letter-spacing: -0.015em;
+  color: var(--text-primary);
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.stream-renderer h3 {
+  font-size: 1.1em;
+  font-weight: 600;
+  margin: 1em 0 0.35em;
+  color: var(--text-primary);
+}
+
+.stream-renderer h4, .stream-renderer h5, .stream-renderer h6 {
+  font-size: 1em;
+  font-weight: 600;
+  margin: 0.875em 0 0.3em;
+  color: var(--text-primary);
+}
+
+.stream-renderer ul, .stream-renderer ol {
+  margin: 0.625em 0;
+  padding-left: 1.75em;
+}
+
+.stream-renderer ul {
+  list-style-type: disc;
+}
+
+.stream-renderer ol {
+  list-style-type: decimal;
+}
+
+.stream-renderer li {
+  margin: 0.25em 0;
+  padding-left: 0.25em;
+}
+
+.stream-renderer li > p {
+  margin: 0.25em 0;
+}
+
+.stream-renderer blockquote {
+  margin: 0.75em 0;
+  padding: 0.5em 1em;
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 0 8px 8px 0;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.stream-renderer blockquote p {
+  margin: 0.25em 0;
+}
+
+.stream-renderer hr {
+  margin: 1.25em 0;
+  border: none;
+  border-top: 1px solid var(--border-color);
+}
+
+.stream-renderer strong {
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.stream-renderer em {
+  font-style: italic;
+}
+
+.stream-renderer img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 0.5em 0;
+}
+
+/* Inline code — DeepSeek style: subtle background, no border */
+.stream-renderer :not(pre) > code {
+  font-size: 0.85em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  padding: 0.15em 0.4em;
+  border-radius: 5px;
+  background: var(--bg-tertiary);
+  color: var(--accent);
+  font-weight: 500;
+  word-break: break-all;
+}
+
+/* ===== CODE BLOCKS — DeepSeek Codex Style ===== */
+.code-block-wrapper {
+  margin: 1em 0;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--code-border);
+  background: var(--code-bg);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.code-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  background: var(--code-header);
+  border-bottom: 1px solid var(--code-border);
+  font-size: 12px;
+}
+
+.code-block-lang {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 600;
+  color: #93b8ff;
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+}
+
+.code-block-copy {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #888;
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.code-block-copy:hover {
+  color: #ccc;
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.code-block-copy.copied {
+  color: #4ade80;
+}
+
+.code-block-body {
+  display: flex;
   overflow-x: auto;
-  padding: 1em;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  font-size: 0.875rem;
-  line-height: 1.5;
+  font-size: 13px;
+  line-height: 1.6;
 }
 
-.hljs {
-  color: #abb2bf;
-  background: #1e1e1e;
+.code-block-body pre {
+  margin: 0;
+  padding: 14px 16px;
+  flex: 1;
+  overflow-x: auto;
 }
 
-.hljs-comment,
-.hljs-quote {
-  color: #5c6370;
-  font-style: italic;
+.code-block-body code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
-.hljs-doctag,
-.hljs-keyword,
-.hljs-formula {
-  color: #c678dd;
+/* Line numbers gutter */
+.code-line-numbers {
+  display: flex;
+  flex-direction: column;
+  padding: 14px 0;
+  text-align: right;
+  user-select: none;
+  border-right: 1px solid var(--code-border);
+  min-width: 40px;
 }
 
-.hljs-section,
-.hljs-name,
-.hljs-selector-tag,
-.hljs-deletion,
-.hljs-subst {
-  color: #e06c75;
+.code-line-numbers span {
+  display: block;
+  padding: 0 10px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #555;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
-.hljs-literal {
-  color: #56b6c2;
+/* ===== THINKING PANEL — DeepSeek "Glass Box" Style ===== */
+.thinking-panel {
+  margin: 0.5em 0;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--thinking-border);
+  background: var(--thinking-bg);
+  transition: all 0.2s ease;
 }
 
-.hljs-string,
-.hljs-regexp,
-.hljs-addition,
-.hljs-attribute,
-.hljs-meta .hljs-string {
-  color: #98c379;
+.thinking-panel:hover {
+  border-color: var(--accent-soft-border);
 }
 
-.hljs-built_in,
-.hljs-class .hljs-title {
-  color: #e6c07b;
+.thinking-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease;
 }
 
-.hljs-attr,
-.hljs-variable,
-.hljs-template-variable,
-.hljs-type,
-.hljs-selector-class,
-.hljs-selector-attr,
-.hljs-selector-pseudo,
-.hljs-number {
-  color: #d19a66;
+.thinking-header:hover {
+  background: var(--accent-soft);
 }
 
-.hljs-symbol,
-.hljs-bullet,
-.hljs-link,
-.hljs-meta,
-.hljs-selector-id,
-.hljs-title {
-  color: #61afef;
+.thinking-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
 }
 
-.hljs-emphasis {
-  font-style: italic;
+.thinking-icon {
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
-.hljs-strong {
-  font-weight: bold;
+.thinking-icon.active {
+  animation: thinking-pulse 1.5s ease-in-out infinite;
 }
 
-.hljs-link {
-  text-decoration: underline;
+@keyframes thinking-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.05); }
 }
 
-/* Pulsing typing cursor animation (smooth, accent-colored) */
+.thinking-chevron {
+  width: 16px;
+  height: 16px;
+  color: var(--text-secondary);
+  transition: transform 0.2s ease;
+}
+
+.thinking-chevron.open {
+  transform: rotate(180deg);
+}
+
+.thinking-body {
+  padding: 12px 14px;
+  border-top: 1px solid var(--thinking-border);
+  font-size: 13px;
+  line-height: 1.65;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+/* Thinking dots animation */
+.thinking-dots {
+  display: inline-flex;
+  gap: 3px;
+  margin-left: 6px;
+}
+
+.thinking-dots span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: thinking-dot 1.2s ease-in-out infinite;
+}
+
+.thinking-dots span:nth-child(2) { animation-delay: 0.15s; }
+.thinking-dots span:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes thinking-dot {
+  0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+  40% { opacity: 1; transform: scale(1.1); }
+}
+
+/* ===== TYPING CURSOR ===== */
 @keyframes blink {
   0%, 100% { opacity: 1; transform: scaleY(1); }
-  50% { opacity: 0.25; transform: scaleY(0.7); }
+  50% { opacity: 0.2; transform: scaleY(0.65); }
 }
 
 .typing-cursor {
   display: inline-block;
-  width: 6px;
-  height: 0.95em;
+  width: 7px;
+  height: 1.1em;
   border-radius: 9999px;
   background: linear-gradient(180deg, var(--accent), var(--accent-hover));
   margin-left: 2px;
-  vertical-align: middle;
-  animation: blink 0.9s ease-in-out infinite;
-  box-shadow: 0 0 8px var(--accent-soft);
+  vertical-align: text-bottom;
+  animation: blink 0.85s ease-in-out infinite;
+  box-shadow: 0 0 10px var(--accent-soft), 0 0 3px var(--accent);
 }
 
-/* Shimmer skeleton mientras el modelo "piensa" (razonamiento en streaming) */
+/* ===== SHIMMER SKELETON ===== */
 @keyframes shimmer {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
@@ -209,14 +440,47 @@ pre code.hljs {
   background: linear-gradient(90deg, var(--bg-tertiary) 25%, var(--accent-soft) 50%, var(--bg-tertiary) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.4s ease-in-out infinite;
+  border-radius: 4px;
 }
 
-/* Entrada suave para mensajes nuevos durante el streaming */
+/* ===== MESSAGE ENTRANCE ===== */
 @keyframes msg-in {
-  from { opacity: 0; transform: translateY(4px); }
+  from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
 .msg-enter {
-  animation: msg-in 0.25s ease-out;
+  animation: msg-in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ===== TABLE STYLING — DeepSeek Clean ===== */
+.stream-renderer table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875em;
+  margin: 0.75em 0;
+}
+
+.stream-renderer th {
+  text-align: left;
+  font-weight: 600;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border-bottom: 2px solid var(--border-color);
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.stream-renderer td {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-secondary);
+}
+
+.stream-renderer tr:last-child td {
+  border-bottom: none;
+}
+
+.stream-renderer tr:hover td {
+  background: var(--accent-soft);
 }
