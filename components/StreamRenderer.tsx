@@ -96,6 +96,91 @@ export const StreamRenderer: React.FC<StreamRendererProps> = ({
     return { parts: segments, charts: chartParts };
   }, [sanitizedContent, isStreaming]);
 
+  const mdComponents: Record<string, any> = {
+    code({ node, inline, className, children, ...props }: any) {
+      const match = /language-(\w+)/.exec(className || '');
+      const codeString = String(children).replace(/\n$/, '');
+
+      if (className?.includes('math-inline')) {
+        return <SafeKaTeX math={codeString} inline={true} />;
+      }
+      if (className?.includes('math-display')) {
+        return <SafeKaTeX math={codeString} inline={false} />;
+      }
+
+      if (!inline && match) {
+        return <CodeBlock language={match[1]} value={codeString} />;
+      } else if (!inline && codeString.includes('\n')) {
+        return <CodeBlock language="" value={codeString} />;
+      }
+
+      return (
+        <code
+          className="px-1.5 py-0.5 rounded bg-neutral-200/70 dark:bg-neutral-800 text-accent font-mono text-[0.85em] font-medium"
+          {...props}
+        >
+          {children}
+        </code>
+      );
+    },
+    table({ children }) {
+      return (
+        <div className="my-3 overflow-x-auto rounded-lg border border-neutral-200 dark:border-neutral-800">
+          <table className="min-w-full text-xs sm:text-sm">
+            {children}
+          </table>
+        </div>
+      );
+    },
+    th({ children }) {
+      return (
+        <th className="px-3 py-2 bg-neutral-100 dark:bg-neutral-800/60 text-left font-semibold text-neutral-900 dark:text-neutral-100 border-b-2 border-neutral-200 dark:border-neutral-700">
+          {children}
+        </th>
+      );
+    },
+    td({ children }) {
+      return (
+        <td className="px-3 py-2 border-t border-neutral-200 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300">
+          {children}
+        </td>
+      );
+    },
+    blockquote({ children }) {
+      return (
+        <blockquote className="my-3 pl-4 border-l-[3px] border-accent bg-accent-soft/50 rounded-r-lg py-2 pr-3 text-neutral-600 dark:text-neutral-400 italic">
+          {children}
+        </blockquote>
+      );
+    },
+    a({ href, children }) {
+      return (
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-accent underline underline-offset-2 decoration-accent/40 hover:decoration-accent font-medium transition-colors"
+        >
+          {children}
+        </a>
+      );
+    },
+    h2({ children }) {
+      return (
+        <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mt-6 mb-3 pb-2 border-b border-neutral-200 dark:border-neutral-800 tracking-tight">
+          {children}
+        </h2>
+      );
+    },
+    h3({ children }) {
+      return (
+        <h3 className="text-base font-semibold text-neutral-900 dark:text-neutral-100 mt-5 mb-2 tracking-tight">
+          {children}
+        </h3>
+      );
+    },
+  };
+
   return (
     <SafeErrorBoundary fallbackText="Error al renderizar el formato Markdown.">
       <div className="stream-renderer w-full">
@@ -111,93 +196,11 @@ export const StreamRenderer: React.FC<StreamRendererProps> = ({
               <ReactMarkdown
                 remarkPlugins={[remarkGfm, remarkMath]}
                 rehypePlugins={[rehypeKatex]}
-                components={{
-            code({ node, inline, className, children, ...props }: any) {
-              const match = /language-(\w+)/.exec(className || '');
-              const codeString = String(children).replace(/\n$/, '');
-
-              if (className?.includes('math-inline')) {
-                return <SafeKaTeX math={codeString} inline={true} />;
-              }
-              if (className?.includes('math-display')) {
-                return <SafeKaTeX math={codeString} inline={false} />;
-              }
-
-              if (!inline && match) {
-                return <CodeBlock language={match[1]} value={codeString} />;
-              } else if (!inline && codeString.includes('\n')) {
-                return <CodeBlock language="" value={codeString} />;
-              }
-
-              return (
-                <code
-                  className="px-1.5 py-0.5 rounded bg-neutral-200/70 dark:bg-neutral-800 text-accent font-mono text-[0.85em] font-medium"
-                  {...props}
-                >
-                  {children}
-                </code>
-              );
-            },
-            table({ children }) {
-              return (
-                <div className="my-3 overflow-x-auto rounded-lg border border-neutral-200 dark:border-neutral-800">
-                  <table className="min-w-full text-xs sm:text-sm">
-                    {children}
-                  </table>
-                </div>
-              );
-            },
-            th({ children }) {
-              return (
-                <th className="px-3 py-2 bg-neutral-100 dark:bg-neutral-800/60 text-left font-semibold text-neutral-900 dark:text-neutral-100 border-b-2 border-neutral-200 dark:border-neutral-700">
-                  {children}
-                </th>
-              );
-            },
-            td({ children }) {
-              return (
-                <td className="px-3 py-2 border-t border-neutral-200 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300">
-                  {children}
-                </td>
-              );
-            },
-            blockquote({ children }) {
-              return (
-                <blockquote className="my-3 pl-4 border-l-[3px] border-accent bg-accent-soft/50 rounded-r-lg py-2 pr-3 text-neutral-600 dark:text-neutral-400 italic">
-                  {children}
-                </blockquote>
-              );
-            },
-            a({ href, children }) {
-              return (
-                <a
-                  href={href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-accent underline underline-offset-2 decoration-accent/40 hover:decoration-accent font-medium transition-colors"
-                >
-                  {children}
-                </a>
-              );
-            },
-            h2({ children }) {
-              return (
-                <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mt-6 mb-3 pb-2 border-b border-neutral-200 dark:border-neutral-800 tracking-tight">
-                  {children}
-                </h2>
-              );
-            },
-            h3({ children }) {
-              return (
-                <h3 className="text-base font-semibold text-neutral-900 dark:text-neutral-100 mt-5 mb-2 tracking-tight">
-                  {children}
-                </h3>
-              );
-            },
-              }}
-            >
-              {part}
-            </ReactMarkdown>
+                components={mdComponents}
+              >
+                {part}
+              </ReactMarkdown>
+            )}
             {charts.filter((c) => c.index === i + 1).map((chart, ci) => (
               <InlineChart key={ci} data={chart.data} type={chart.chartType} title={chart.title} subtitle={chart.subtitle} />
             ))}
