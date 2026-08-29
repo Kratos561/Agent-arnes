@@ -21,10 +21,10 @@ const localHostPattern = /(^|\/\/)(localhost|127\.0\.0\.1|0\.0\.0\.0)(:|\/|$)/i;
 // ============================================================================
 
 const CORS_PROXIES = [
-  (url: string) => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
   (url: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-  (url: string) => `https://cors.eu.org/${url}`,
-  (url: string) => `https://thingproxy.freeboard.io/fetch/${url}`,
+  (url: string) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+  (url: string) => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
+  (url: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
 ];
 
 function endpoint(baseUrl: string, resource: 'models' | 'chat/completions') {
@@ -83,7 +83,7 @@ async function fetchWithCORSFallback(
 function corsHint(provider: ProviderConfig, error: unknown) {
   const detail = error instanceof Error ? error.message : String(error);
   if (!localHostPattern.test(provider.baseUrl)) {
-    return `${detail}. El proveedor bloqueó CORS desde el navegador. Se ha intentado reenviar vía proxy sin éxito. Prueba cambiando de proveedor, usando un endpoint compatible con CORS, o ajusta la configuracion de proxy en Ajustes.`;
+    return `${detail}. El proveedor bloqueó la petición desde el navegador (CORS) o rechaza las IPs de los proxies. Se ha intentado reenviar vía proxy sin éxito. Recomendación: usa un proveedor compatible con CORS (OpenRouter, Groq, DeepSeek, Mistral) o una clave de OpenRouter para acceder a los mismos modelos de OpenAI/Anthropic directamente.`;
   }
   return detail;
 }
@@ -166,30 +166,34 @@ export async function sendChatMessageStream(
   let reasoning = '';
   let finishReason: string | undefined;
   let usage: { prompt?: number; completion?: number; total?: number } | undefined;
-  let autoContinueCount = 0;
-  const MAX_AUTO_CONTINUES = parameters.auto_continue !== false ? 3 : 0;
 
-  try {
-    const formatted = [
-      { role: 'system', content: buildHarnessSystemPrompt(provider, modelId, customSystemPrompt, agentRules, agentSkills, persona, sessionPrompt) },
-      ...messages.filter((message) => !message.isError && message.content.trim()).map((message) => ({ role: message.role, content: message.content })),
-    ];
+  const formatted = [
+    { role: 'system', content: buildHarnessSystemPrompt(provider, modelId, customSystemPrompt, agentRules, agentSkills, persona, sessionPrompt) },
+    ...messages.filter((message) => !message.isError && message.content.trim()).map((message) => ({ role: message.role, content: message.content })),
+  ];
 
-    // Compactación de contexto: resume el historial antiguo cuando la ventana se llena
-    const windowMax = contextWindow && contextWindow > 0 ? contextWindow : 64_000;
-    const compaction = compactContext(formatted, windowMax, true);
-    const contextMessages = compaction.messages;
+  const windowMax = contextWindow && contextWindow > 0 ? contextWindow : 64_000;
+  const compaction = compactContext(formatted, windowMax, true);
+  const contextMessages = compaction.messages;
+
+  /**
+   * Ejecuta la petición al proveedor completa (incluyendo auto-continuación).
+   * @param useStream Si true usa streaming SSE; si false pide la respuesta completa.
+   * @returns una promesa que resuelve al terminar (sin lanzar hacia el interior).
+   */
+  const runRequest = async (useStream: boolean): Promise<void> => {
+    let autoContinueCount = 0;
+    const MAX_AUTO_CONTINUES = parameters.auto_continue !== false ? 3 : 0;
 
     while (true) {
       const payload: Record<string, unknown> = {
         model: modelId.trim(),
         messages: contextMessages,
-        stream: parameters.stream,
+        stream: useStream,
         temperature: parameters.temperature,
         top_p: parameters.top_p,
       };
 
-      // Si max_tokens es 0 o no está definido, NO limitamos artificialmente al modelo
       if (parameters.max_tokens && parameters.max_tokens > 0) {
         payload.max_tokens = parameters.max_tokens;
       }
@@ -208,7 +212,7 @@ export async function sendChatMessageStream(
         endpoint(provider.baseUrl, 'chat/completions'),
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...headersFor(provider, parameters.stream) },
+          headers: { 'Content-Type': 'application/json', ...headersFor(provider, useStream) },
           body: JSON.stringify(payload),
           signal,
         },
@@ -222,7 +226,8 @@ export async function sendChatMessageStream(
       }
 
       const contentType = response.headers.get('content-type') || '';
-      if (!parameters.stream || !contentType.includes('text/event-stream')) {
+      if (!useStream || !contentType.includes('text/event-stream')) {
+        // Respuesta no-secuencial: esperamos un JSON único
         const body = await response.json();
         const delta = extractDelta(body);
         content += delta.content;
@@ -263,22 +268,38 @@ export async function sendChatMessageStream(
       }
       if (buffer) consumeLine(buffer);
 
-      // Si se agotaron los tokens antes de completar la respuesta, auto-continuar transparentemente
       if (finishReason === 'length' && autoContinueCount < MAX_AUTO_CONTINUES && !signal?.aborted) {
         autoContinueCount++;
         const continuationPrompt = content.trim()
           ? `Continúa exactamente desde donde te quedaste sin repetir nada previo.`
           : `Has completado la fase de razonamiento. Ahora redacta la respuesta completa y detallada.`;
-        
         formatted.push({ role: 'assistant', content: content || reasoning });
         formatted.push({ role: 'user', content: continuationPrompt });
-        // Re-calcular la compactación con el contexto ampliado para la continuación
         const recompaction = compactContext(formatted, windowMax, true);
         contextMessages.splice(0, contextMessages.length, ...recompaction.messages);
         continue;
       }
 
       break;
+    }
+  };
+
+  try {
+    // Intento principal: streaming (según preferencias del usuario)
+    try {
+      await runRequest(parameters.stream);
+    } catch (primaryError) {
+      // Si el streaming falló a través del proxy (común en proxies que no
+      // soportan SSE), reintentamos en modo no-streaming con JSON.
+      if (parameters.stream && !signal?.aborted) {
+        content = '';
+        reasoning = '';
+        finishReason = undefined;
+        usage = undefined;
+        await runRequest(false);
+      } else {
+        throw primaryError;
+      }
     }
 
     callbacks.onDone(content, reasoning, usage, finishReason || 'stop');
