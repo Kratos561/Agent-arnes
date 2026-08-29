@@ -7,6 +7,8 @@ export interface ProviderConfig {
   customHeaders?: Record<string, string>;
   isCustom?: boolean;
   useProxy?: boolean;
+  /** Proxy CORS propio (worker/server propio). Se prueba antes que los proxies públicos. */
+  customProxy?: string;
 }
 
 export interface ModelInfo {

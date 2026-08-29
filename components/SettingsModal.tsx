@@ -481,6 +481,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
             </div>
 
+            {/* Custom Proxy URL */}
+            <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50/60 dark:bg-neutral-900/40 p-3.5 space-y-2">
+              <div className="flex items-start gap-2.5 min-w-0">
+                <Server className="w-4 h-4 text-neutral-400 mt-0.5 flex-shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-neutral-800 dark:text-neutral-200">
+                    Proxy propio (CORS) — recomendado
+                  </p>
+                  <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5 leading-relaxed">
+                    Si tu red bloquea todas las conexiones (VPN, firewall, AdGuard de Windows), pega aquí la URL de tu propio proxy Cloudflare Worker. Se usa antes que los proxies públicos y permite cualquier proveedor. Deja vacío para usar solo los públicos.
+                  </p>
+                </div>
+              </div>
+              <input
+                type="text"
+                value={currentProvider.customProxy || ''}
+                onChange={(e) => handleUpdateField('customProxy', e.target.value)}
+                placeholder="https://tu-proxy.tu-cuenta.workers.dev"
+                className="w-full px-3 py-2 text-xs rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+              />
+            </div>
+
             {/* Test Connection & Discovered Models Action */}
             <div className="pt-2">
               <button

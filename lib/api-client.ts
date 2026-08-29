@@ -66,8 +66,18 @@ async function fetchWithCORSFallback(
     lastError.message = directError instanceof Error ? directError.message : 'Fallo de red';
   }
 
-  // 2) Reintentos vía proxi
-  for (const buildProxyUrl of CORS_PROXIES) {
+  // 2) Reintentos vía proxi. El proxy propio (worker del usuario) se usa siempre
+  //    que esté configurado; los proxies públicos solo si useProxy no está en false.
+  const proxyBuilders: ((u: string) => string)[] = [];
+  if (provider.customProxy && provider.customProxy.trim()) {
+    const base = provider.customProxy.trim().replace(/\/+$/, '');
+    proxyBuilders.push((u: string) => `${base}?url=${encodeURIComponent(u)}`);
+  }
+  if (tryProxy) {
+    proxyBuilders.push(...CORS_PROXIES);
+  }
+
+  for (const buildProxyUrl of proxyBuilders) {
     try {
       const proxiedUrl = buildProxyUrl(targetUrl);
       const response = await fetch(proxiedUrl, init);
@@ -157,6 +167,12 @@ export async function diagnoseConnection(provider: ProviderConfig): Promise<{ ta
   };
 
   attempts.push(await run('Directo (sin proxy)', target));
+
+  if (provider.customProxy && provider.customProxy.trim()) {
+    const base = provider.customProxy.trim().replace(/\/+$/, '');
+    const url = `${base}?url=${encodeURIComponent(target)}`;
+    attempts.push(await run(`Proxy propio: ${new URL(base).host}`, url));
+  }
 
   if (provider.useProxy !== false) {
     for (const buildProxyUrl of CORS_PROXIES) {
