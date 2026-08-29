@@ -106,7 +106,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       if (res.success) {
         setTestResult({
           status: 'success',
-          message: `Conexión exitosa. Se encontraron ${res.models.length} modelos disponibles (${latency}ms).`,
+          message: `Conexión exitosa. Se encontraron ${res.models.length} modelos disponibles (${latency}ms)${res.viaProxy ? ' — vía proxy CORS' : ''}.`,
           models: res.models,
           latencyMs: latency,
         });
@@ -427,6 +427,39 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <p className="text-[11px] text-neutral-400 dark:text-neutral-500 mt-1">
                 Tu clave se almacena de forma segura en tu navegador y no se envía a servidores de terceros salvo al proveedor configurado.
               </p>
+            </div>
+
+            {/* CORS Proxy Toggle */}
+            <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50/60 dark:bg-neutral-900/40 p-3.5">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-start gap-2.5 min-w-0">
+                  <Globe className="w-4 h-4 text-neutral-400 mt-0.5 flex-shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-neutral-800 dark:text-neutral-200">
+                      Proxy CORS automático
+                    </p>
+                    <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5 leading-relaxed">
+                      Si el proveedor bloquea las peticiones desde el navegador, se reintenta a través de un proxy público que añade los headers CORS necesarios. Recomendado para Google/Anthropic/X.AI.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleUpdateField('useProxy', currentProvider.useProxy === false ? true : false)}
+                  className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${
+                    currentProvider.useProxy === false
+                      ? 'bg-neutral-300 dark:bg-neutral-700'
+                      : 'bg-emerald-500'
+                  }`}
+                  aria-pressed={currentProvider.useProxy !== false}
+                >
+                  <span
+                    className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${
+                      currentProvider.useProxy === false ? 'left-0.5' : 'left-[22px]'
+                    }`}
+                  />
+                </button>
+              </div>
             </div>
 
             {/* Test Connection & Discovered Models Action */}

@@ -6,6 +6,7 @@ export interface ProviderConfig {
   defaultModel?: string;
   customHeaders?: Record<string, string>;
   isCustom?: boolean;
+  useProxy?: boolean;
 }
 
 export interface ModelInfo {

@@ -12,6 +12,21 @@ export interface StreamCallbacks {
 
 const localHostPattern = /(^|\/\/)(localhost|127\.0\.0\.1|0\.0\.0\.0)(:|\/|$)/i;
 
+// ============================================================================
+// CORS Proxy Fallback
+// Cuándo un proveedor bloquea las peticiones desde el navegador (CORS), se
+// reintenta a través de proxies públicos que reenvían la petición servidor a
+// servidor y añaden los headers CORS necesarios. GitHub Pages solo sirve
+// estáticos, así que esta es la vía para endpoints sin CORS.
+// ============================================================================
+
+const CORS_PROXIES = [
+  (url: string) => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
+  (url: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+  (url: string) => `https://cors.eu.org/${url}`,
+  (url: string) => `https://thingproxy.freeboard.io/fetch/${url}`,
+];
+
 function endpoint(baseUrl: string, resource: 'models' | 'chat/completions') {
   const normalized = baseUrl.trim().replace(/\/+$/, '');
   if (!normalized) throw new Error('Configura una URL base antes de continuar.');
@@ -27,23 +42,67 @@ function headersFor(provider: ProviderConfig, streaming = false): Record<string,
   return headers;
 }
 
+/**
+ * Intenta primero la petición directa; si falla por CORS/red, reintenta a
+ * través de los proxies públicos hasta agotar la lista.
+ * @returns El último error si todos fallan.
+ */
+async function fetchWithCORSFallback(
+  targetUrl: string,
+  init: RequestInit,
+  provider: ProviderConfig,
+  tryProxy: boolean
+): Promise<{ response: Response; viaProxy: boolean }> {
+  const lastError: Error = new Error('Fallo de red');
+
+  // 1) Intento directo
+  try {
+    const response = await fetch(targetUrl, init);
+    // Si fue exitoso (incluido errores HTTP del propio proveedor), usamos la respuesta
+    return { response, viaProxy: false };
+  } catch (directError) {
+    const isLocal = localHostPattern.test(targetUrl);
+    if (isLocal || !tryProxy) throw directError;
+    lastError.message = directError instanceof Error ? directError.message : 'Fallo de red';
+  }
+
+  // 2) Reintentos vía proxi
+  for (const buildProxyUrl of CORS_PROXIES) {
+    try {
+      const proxiedUrl = buildProxyUrl(targetUrl);
+      const response = await fetch(proxiedUrl, init);
+      return { response, viaProxy: true };
+    } catch (proxyError) {
+      lastError.message = proxyError instanceof Error ? proxyError.message : 'Fallo de red';
+    }
+  }
+
+  throw lastError;
+}
+
 function corsHint(provider: ProviderConfig, error: unknown) {
   const detail = error instanceof Error ? error.message : String(error);
   if (!localHostPattern.test(provider.baseUrl)) {
-    return `${detail}. GitHub Pages no puede ocultar ni reenviar claves: el proveedor debe permitir CORS desde el navegador. Prueba OpenRouter, un endpoint compatible con CORS o ejecuta la app localmente.`;
+    return `${detail}. El proveedor bloqueó CORS desde el navegador. Se ha intentado reenviar vía proxy sin éxito. Prueba cambiando de proveedor, usando un endpoint compatible con CORS, o ajusta la configuracion de proxy en Ajustes.`;
   }
   return detail;
 }
 
 /** Consulta /models directamente desde el navegador; no depende de una ruta API propia. */
-export async function fetchModels(provider: ProviderConfig): Promise<{ success: boolean; models: ModelInfo[]; error?: string }> {
+export async function fetchModels(provider: ProviderConfig): Promise<{ success: boolean; models: ModelInfo[]; error?: string; viaProxy?: boolean }> {
   try {
-    const response = await fetch(endpoint(provider.baseUrl, 'models'), { headers: headersFor(provider) });
+    const { response, viaProxy } = await fetchWithCORSFallback(
+      endpoint(provider.baseUrl, 'models'),
+      { headers: headersFor(provider) },
+      provider,
+      provider.useProxy !== false
+    );
     const body = await response.json().catch(() => null);
     if (!response.ok) return { success: false, models: [], error: body?.error?.message || body?.message || `Error HTTP ${response.status}` };
     const entries = Array.isArray(body) ? body : Array.isArray(body?.data) ? body.data : Array.isArray(body?.models) ? body.models : [];
     return {
       success: true,
+      viaProxy,
       models: entries.map((model: Record<string, unknown>) => ({
         id: String(model.id || model.name || ''),
         name: String(model.name || model.id || ''),
@@ -145,12 +204,17 @@ export async function sendChatMessageStream(
         }
       }
 
-      const response = await fetch(endpoint(provider.baseUrl, 'chat/completions'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...headersFor(provider, parameters.stream) },
-        body: JSON.stringify(payload),
-        signal,
-      });
+      const { response } = await fetchWithCORSFallback(
+        endpoint(provider.baseUrl, 'chat/completions'),
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headersFor(provider, parameters.stream) },
+          body: JSON.stringify(payload),
+          signal,
+        },
+        provider,
+        provider.useProxy !== false
+      );
 
       if (!response.ok) {
         const body = await response.json().catch(() => null);
