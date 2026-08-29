@@ -20,7 +20,7 @@ import {
   Check
 } from 'lucide-react';
 import { ProviderConfig, ModelInfo, PRESET_PROVIDERS } from '@/lib/types';
-import { fetchModels } from '@/lib/api-client';
+import { fetchModels, diagnoseConnection, DiagnosticAttempt } from '@/lib/api-client';
 import { saveCachedModels } from '@/lib/storage';
 
 interface SettingsModalProps {
@@ -53,6 +53,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   }>({ status: 'idle' });
   const [modelSearch, setModelSearch] = useState('');
   const [showSavedIndicator, setShowSavedIndicator] = useState(false);
+  const [isDiagnosing, setIsDiagnosing] = useState(false);
+  const [diagnostics, setDiagnostics] = useState<{ target: string; attempts: DiagnosticAttempt[] } | null>(null);
 
   const flashSaved = () => {
     setShowSavedIndicator(true);
@@ -131,6 +133,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       });
     } finally {
       setIsTesting(false);
+    }
+  };
+
+  const handleDiagnose = async () => {
+    if (!currentProvider.baseUrl) {
+      setTestResult({ status: 'error', message: 'Ingresa una URL Base válida antes de diagnosticar.' });
+      return;
+    }
+    setIsDiagnosing(true);
+    setDiagnostics(null);
+    try {
+      const result = await diagnoseConnection(currentProvider);
+      setDiagnostics(result);
+    } catch (err: any) {
+      setDiagnostics({ target: '', attempts: [{ attempt: 'Error', ok: false, kind: 'network', detail: err?.message || String(err) }] });
+    } finally {
+      setIsDiagnosing(false);
     }
   };
 
@@ -484,6 +503,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </button>
             </div>
 
+            {/* Diagnostic button */}
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={handleDiagnose}
+                disabled={isDiagnosing}
+                className="w-full py-2 px-4 rounded-xl bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/40 text-amber-900 dark:text-amber-200 text-xs sm:text-sm font-semibold transition-all flex items-center justify-center gap-2 border border-amber-200 dark:border-amber-800"
+              >
+                {isDiagnosing ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin text-amber-500" />
+                    <span>Diagnosticando conexión directa y proxies...</span>
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                    <span>Diagnóstico de conexión (si falla, usa esto para ver el motivo real)</span>
+                  </>
+                )}
+              </button>
+            </div>
+
             {/* Connection Test Result */}
             {testResult.status !== 'idle' && (
               <div
@@ -501,6 +542,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <div className="flex-1">
                   <p className="font-medium">{testResult.message}</p>
                 </div>
+              </div>
+            )}
+
+            {/* Diagnostics result */}
+            {diagnostics && (
+              <div className="p-3.5 rounded-xl border text-xs leading-relaxed bg-neutral-50 dark:bg-neutral-900/60 border-neutral-200 dark:border-neutral-800 space-y-2">
+                <p className="font-semibold text-neutral-700 dark:text-neutral-200">Resultado del diagnóstico</p>
+                <p className="text-[11px] text-neutral-500 dark:text-neutral-400 break-all">Objetivo: {diagnostics.target}</p>
+                {diagnostics.attempts.map((a: DiagnosticAttempt, i: number) => (
+                  <div key={i} className="flex items-start gap-2">
+                    <span className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold ${a.ok ? 'bg-emerald-500 text-white' : a.kind === 'cors' ? 'bg-red-500 text-white' : a.kind === 'timeout' ? 'bg-amber-500 text-white' : 'bg-orange-500 text-white'}`}>{a.ok ? '✓' : '×'}</span>
+                    <div className="flex-1">
+                      <p className={`font-medium ${a.ok ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>{a.attempt}{a.status ? ` — HTTP ${a.status}` : ''}</p>
+                      <p className="text-[11px] text-neutral-500 dark:text-neutral-400 break-words">{a.detail}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
 

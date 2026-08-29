@@ -116,6 +116,57 @@ export async function fetchModels(provider: ProviderConfig): Promise<{ success: 
   }
 }
 
+export interface DiagnosticAttempt {
+  attempt: string;
+  ok: boolean;
+  kind: 'ok' | 'http_error' | 'cors' | 'network' | 'timeout';
+  status?: number;
+  detail: string;
+}
+
+/** Diagnóstico de conectividad: prueba la petición directa y cada proxy por separado, mostrando el resultado individual. */
+export async function diagnoseConnection(provider: ProviderConfig): Promise<{ target: string; attempts: DiagnosticAttempt[] }> {
+  const target = endpoint(provider.baseUrl, 'models');
+  const attempts: DiagnosticAttempt[] = [];
+
+  const run = async (label: string, url: string): Promise<DiagnosticAttempt> => {
+    const started = performance.now();
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 15000);
+    try {
+      const res = await fetch(url, { headers: headersFor(provider), signal: ctrl.signal });
+      const body = await res.json().catch(() => null);
+      const status = res.status;
+      const ms = Math.round(performance.now() - started);
+      if (res.ok) {
+        return { attempt: label, ok: true, kind: 'ok', status, detail: `Éxito (${ms}ms) — ${body?.choices?.[0]?.message?.content ?? body?.data?.length !== undefined ? `${(body.data?.length ?? 0)} modelos` : 'respuesta válida'}` };
+      }
+      return { attempt: label, ok: false, kind: 'http_error', status, detail: `HTTP ${status} (${ms}ms): el servidor respondió (no es bloqueo de red). ${body?.error?.message || body?.message || ''}` };
+    } catch (err: any) {
+      const ms = Math.round(performance.now() - started);
+      const aborted = err?.name === 'AbortError';
+      if (aborted) return { attempt: label, ok: false, kind: 'timeout', detail: `Timeout (más de 15s, ${ms}ms)` };
+      const name = err?.name || '';
+      const msg = err?.message || String(err);
+      // "Failed to fetch" / TypeError sin respuesta = bloqueo CORS o de red
+      const isCors = msg.includes('Failed to fetch') || msg.includes('NetworkError') || name === 'TypeError';
+      return { attempt: label, ok: false, kind: isCors ? 'cors' : 'network', detail: `${name}: ${msg} (${ms}ms)${isCors ? ' — el navegador bloqueó la petición (CORS o red)' : ''}` };
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  attempts.push(await run('Directo (sin proxy)', target));
+
+  if (provider.useProxy !== false) {
+    for (const buildProxyUrl of CORS_PROXIES) {
+      attempts.push(await run(`Proxy: ${new URL(buildProxyUrl(target)).host}`, buildProxyUrl(target)));
+    }
+  }
+
+  return { target, attempts };
+}
+
 /** Prompt de ejecución de alto rendimiento: ensambla el system prompt con todas las secciones del harness. */
 export function buildHarnessSystemPrompt(
   provider: ProviderConfig,
