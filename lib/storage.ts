@@ -57,13 +57,28 @@ export function loadProviders(): ProviderConfig[] {
   }
 }
 
-export function saveProviders(providers: ProviderConfig[]) {
-  if (typeof window === 'undefined') return;
+export function saveProviders(providers: ProviderConfig[]): boolean {
+  if (typeof window === 'undefined') return false;
   try {
     localStorage.setItem(STORAGE_KEYS.PROVIDERS, JSON.stringify(providers));
     notifyAppStoreUpdate({ providers });
+    return true;
   } catch (e) {
     console.error('Error saving providers to localStorage', e);
+    return false;
+  }
+}
+
+/** Comprueba si el almacenamiento local está disponible y escribible. */
+export function isStorageAvailable(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const k = '__arrow_check__';
+    localStorage.setItem(k, '1');
+    localStorage.removeItem(k);
+    return true;
+  } catch {
+    return false;
   }
 }
 

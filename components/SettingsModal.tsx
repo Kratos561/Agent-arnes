@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import { ProviderConfig, ModelInfo, PRESET_PROVIDERS } from '@/lib/types';
 import { fetchModels, diagnoseConnection, DiagnosticAttempt } from '@/lib/api-client';
-import { saveCachedModels } from '@/lib/storage';
+import { saveCachedModels, isStorageAvailable } from '@/lib/storage';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -53,11 +53,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   }>({ status: 'idle' });
   const [modelSearch, setModelSearch] = useState('');
   const [showSavedIndicator, setShowSavedIndicator] = useState(false);
+  const [storageOk, setStorageOk] = useState<boolean>(() => (typeof window !== 'undefined' ? isStorageAvailable() : false));
   const [isDiagnosing, setIsDiagnosing] = useState(false);
   const [diagnostics, setDiagnostics] = useState<{ target: string; attempts: DiagnosticAttempt[] } | null>(null);
 
   const flashSaved = () => {
-    setShowSavedIndicator(true);
+    const ok = isStorageAvailable();
+    setStorageOk(ok);
+    setShowSavedIndicator(ok);
     setTimeout(() => setShowSavedIndicator(false), 2400);
   };
 
@@ -79,6 +82,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       return p;
     });
     onUpdateProviders(updated);
+    flashSaved();
   };
 
   const handleResetBaseUrl = () => {
@@ -662,12 +666,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               className={`inline-flex items-center gap-1 font-medium transition-all ${
                 showSavedIndicator
                   ? 'text-emerald-600 dark:text-emerald-400'
+                  : storageOk === false
+                  ? 'text-red-600 dark:text-red-400'
                   : 'opacity-70'
               }`}
             >
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              {showSavedIndicator
-                ? 'Proveedor guardado en el arness'
+              {storageOk === false ? (
+                <AlertCircle className="w-3.5 h-3.5" />
+              ) : (
+                <CheckCircle2 className="w-3.5 h-3.5" />
+              )}
+              {storageOk === false
+                ? 'ALERTA: el almacenamiento local no está disponible (modo incógnito o almacenamiento bloqueado). Los proveedores no se guardarán.'
+                : showSavedIndicator
+                ? 'Proveedor guardado en este navegador'
                 : 'Los cambios se guardan automáticamente'}
             </span>
           </div>
