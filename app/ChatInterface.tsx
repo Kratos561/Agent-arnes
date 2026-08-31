@@ -492,6 +492,44 @@ export default function Home() {
             });
             saveSessionsStreaming(liveUpdated);
           },
+          onToolCall: (call) => {
+            // Append tool call indicator to the assistant message during streaming
+            const toolIndicator = `\n\n> 🔧 Ejecutando: \`${call.name}\`...\n`;
+            accumulatedContent += toolIndicator;
+            const liveSessions = getAppStoreSnapshot().sessions;
+            const liveUpdated = liveSessions.map((s) => {
+              if (s.id === sessionId) {
+                const msgs = s.messages.map((m) => {
+                  if (m.id === assistantMessageId) {
+                    return { ...m, content: accumulatedContent };
+                  }
+                  return m;
+                });
+                return { ...s, messages: msgs };
+              }
+              return s;
+            });
+            saveSessionsStreaming(liveUpdated);
+          },
+          onToolResult: (result) => {
+            // Replace the "executing" indicator with the result
+            const resultIndicator = `\n> ✅ \`${result.name}\` completado (${Math.round(result.executionTimeMs)}ms)\n`;
+            accumulatedContent += resultIndicator;
+            const liveSessions = getAppStoreSnapshot().sessions;
+            const liveUpdated = liveSessions.map((s) => {
+              if (s.id === sessionId) {
+                const msgs = s.messages.map((m) => {
+                  if (m.id === assistantMessageId) {
+                    return { ...m, content: accumulatedContent };
+                  }
+                  return m;
+                });
+                return { ...s, messages: msgs };
+              }
+              return s;
+            });
+            saveSessionsStreaming(liveUpdated);
+          },
           onDone: async (finalContent, finalReasoning, tokens, finishReason) => {
             setIsGenerating(false);
             abortControllerRef.current = null;
@@ -741,6 +779,8 @@ export default function Home() {
           saveSessionsStreaming(liveUpdated);
         },
         onReasoning: () => {},
+        onToolCall: () => {},
+        onToolResult: () => {},
         onDone: (finalChunkContent, _, tokens, finishReason) => {
           setIsGenerating(false);
           abortControllerRef.current = null;

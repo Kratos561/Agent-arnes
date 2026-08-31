@@ -60,6 +60,10 @@ export interface PromptSection {
   name: string;
   order: number;
   text: string;
+  /** Optional: section only included if condition is true */
+  condition?: boolean;
+  /** Optional: template variables {{varName}} in text */
+  variables?: Record<string, string>;
 }
 
 export interface AssembleContext {
@@ -70,21 +74,43 @@ export interface AssembleContext {
   activeSkills: AgentSkill[];
   persona: PersonaConfig;
   sessionPrompt?: string;
+  /** Dynamic runtime variables for template interpolation */
+  runtimeVars?: Record<string, string>;
+  /** Available tool names (injected into prompt) */
+  toolNames?: string[];
 }
 
-// ===== SKILL.md Parser =====
+// ===== SKILL.md Parser (DeepSeek Harness format) =====
 
 /**
- * Parses a SKILL.md file (YAML frontmatter + Markdown body).
+ * Parses a SKILL.md file with full DSH frontmatter support.
+ *
  * Format:
  *   ---
  *   name: skill-name
  *   description: When to use this skill...
+ *   triggers:
+ *     - keyword1
+ *     - keyword2
+ *   invocation:
+ *     model: true
+ *     user: true
+ *   tools:
+ *     - tool_name_1
  *   ---
  *   ## Instructions
  *   ...markdown content...
  */
-export function parseSkillMd(raw: string): { frontmatter: Record<string, string>; body: string } | null {
+export interface SkillFrontmatter {
+  name: string;
+  description: string;
+  triggers: string[];
+  invocation: { model: boolean; user: boolean };
+  tools: string[];
+  [key: string]: string | string[] | { model: boolean; user: boolean };
+}
+
+export function parseSkillMd(raw: string): { frontmatter: SkillFrontmatter; body: string } | null {
   const trimmed = raw.trim();
   if (!trimmed.startsWith('---')) return null;
 
@@ -94,22 +120,53 @@ export function parseSkillMd(raw: string): { frontmatter: Record<string, string>
   const fmBlock = trimmed.slice(3, endFm).trim();
   const body = trimmed.slice(endFm + 3).trim();
 
-  const frontmatter: Record<string, string> = {};
+  const rawFm: Record<string, string> = {};
+  const listKeys: Record<string, string[]> = {};
+
   for (const line of fmBlock.split('\n')) {
     const colonIdx = line.indexOf(':');
     if (colonIdx > 0) {
       const key = line.slice(0, colonIdx).trim();
       const val = line.slice(colonIdx + 1).trim();
-      if (key) frontmatter[key] = val;
+      if (key) {
+        if (val === '' || val === '|' || val === '>') {
+          // Could be start of a list — handled by next lines
+          listKeys[key] = listKeys[key] || [];
+        } else {
+          rawFm[key] = val;
+        }
+      }
+    } else if (line.trim().startsWith('- ')) {
+      // List item — find the last key being built
+      const lastKey = Object.keys(listKeys).pop();
+      if (lastKey) {
+        listKeys[lastKey].push(line.trim().slice(2));
+      }
     }
   }
+
+  const triggers = listKeys.triggers || [];
+  const tools = listKeys.tools || [];
+  const invocation = {
+    model: rawFm.invocation_model !== 'false',
+    user: rawFm.invocation_user !== 'false',
+  };
+
+  const frontmatter: SkillFrontmatter = {
+    name: rawFm.name || 'unnamed',
+    description: rawFm.description || body.slice(0, 120).replace(/\n/g, ' '),
+    triggers,
+    invocation,
+    tools,
+    ...rawFm,
+  };
 
   return { frontmatter, body };
 }
 
 /**
  * Creates an AgentSkill from raw SKILL.md content.
- * Generates ID from name, extracts triggers from description.
+ * Extracts triggers from frontmatter or auto-generates from description.
  */
 export function skillFromSkillMd(raw: string, existingId?: string): AgentSkill | null {
   const parsed = parseSkillMd(raw);
@@ -119,13 +176,16 @@ export function skillFromSkillMd(raw: string, existingId?: string): AgentSkill |
   const name = frontmatter.name || 'unnamed';
   const description = frontmatter.description || body.slice(0, 120).replace(/\n/g, ' ');
 
-  // Extract trigger phrases from description (lowercase words/phrases > 3 chars)
-  const triggers = description
-    .toLowerCase()
-    .replace(/[^a-z0-9\sáéíóúñ]/g, ' ')
-    .split(/\s+/)
-    .filter((w) => w.length > 3)
-    .slice(0, 8);
+  // Use explicit triggers from frontmatter, or auto-extract from description
+  let triggers = frontmatter.triggers;
+  if (triggers.length === 0) {
+    triggers = description
+      .toLowerCase()
+      .replace(/[^a-z0-9\sáéíóúñ]/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length > 3)
+      .slice(0, 8);
+  }
 
   return {
     id: existingId || `skill-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now()}`,
@@ -293,15 +353,32 @@ export const DEFAULT_PERSONAS: PersonaConfig[] = [
 /**
  * Assembles the complete system prompt following DeepSeek Harness ordering:
  *   -100  Identity → -50 Context → 0 Persona → 50 Skills → 100 Rules → 150 Tool guidance → 200 Safety
+ *
+ * Supports:
+ *   - Template variables: {{varName}} in section text
+ *   - Conditional sections: section only included if condition is true
+ *   - Dynamic context injection (time, provider, model, tools)
+ *   - Named sections for override/replace capability
  */
 export function assemblePrompt(ctx: AssembleContext): string {
   const sections: PromptSection[] = [];
+  const runtimeVars: Record<string, string> = {
+    provider_name: ctx.provider.name,
+    model_id: ctx.modelId,
+    endpoint: ctx.provider.baseUrl,
+    ...ctx.runtimeVars,
+  };
+
+  // Helper: interpolate {{varName}} in text
+  const interpolate = (text: string, vars: Record<string, string>): string => {
+    return text.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? `{{${key}}}`);
+  };
 
   // -100: Harness Identity (fixed)
   sections.push({
     name: 'harness:identity',
     order: -100,
-    text: `Eres un agente de IA alimentado por Agent Arnes — un entorno de ejecución agéntico de alto rendimiento con renderizado reactivo, herramientas de navegador y streaming en vivo.`,
+    text: 'Eres un agente de IA alimentado por Agent Arnes — un entorno de ejecucion agentic de alto rendimiento con renderizado reactivo, herramientas de navegador y streaming en vivo.',
   });
 
   // -50: Runtime Context
@@ -310,12 +387,13 @@ export function assemblePrompt(ctx: AssembleContext): string {
     name: 'runtime:context',
     order: -50,
     text: [
-      `## Contexto de Ejecución`,
+      '## Contexto de Ejecucion',
       `- Fecha/Hora actual: ${now.toLocaleString('es-ES')}`,
-      `- Proveedor activo: ${ctx.provider.name}`,
-      `- Modelo activo: ${ctx.modelId}`,
-      `- Endpoint: ${ctx.provider.baseUrl}`,
+      `- Proveedor activo: {{provider_name}}`,
+      `- Modelo activo: {{model_id}}`,
+      `- Endpoint: {{endpoint}}`,
     ].join('\n'),
+    variables: runtimeVars,
   });
 
   // 0: Persona
@@ -351,42 +429,65 @@ export function assemblePrompt(ctx: AssembleContext): string {
     });
   }
 
-  // 150: Tool Guidance (ultra-direct — forces tool usage)
-  sections.push({
-    name: 'tool:guidance',
-    order: 150,
-    text: [
-      '## HERRAMIENTAS — USO OBLIGATORIO',
-      '',
-      'Tienes 3 herramientas. DEBES usarlas cuando la tarea lo requiera. Si necesitas datos actuales, NO inventes — busca. Si necesitas visualizar, NO describas — grafica.',
-      '',
-      'FORMATO (copia exactamente):',
-      '```',
-      ':::tool',
-      '{"name":"NOMBRE","arguments":{...}}',
-      ':::',
-      '```',
-      '',
-      'HERRAMIENTAS:',
-      '',
-      '1) web_search — BUSCA en internet cuando necesites datos actuales, estadisticas, noticias, o cualquier informacion que no tengas.',
-      '   {"name":"web_search","arguments":{"query":"termino de busqueda"} }',
-      '   Ejemplo: si el usuario pregunta "que es DeepSeek" o "precio del bitcoin hoy", DEBES buscar.',
-      '',
-      '2) render_chart — GRAFICA datos cuando el usuario pida ver tendencias, comparaciones, distribuciones.',
-      '   {"name":"render_chart","arguments":{"type":"bar","labels":["A","B"],"datasets":[{"label":"Serie","data":[10,20]}],"title":"Titulo"}}',
-      '   Tipos: bar, line, pie, doughnut.',
-      '',
-      '3) generate_csv — GENERA datos tabulares descargables.',
-      '   {"name":"generate_csv","arguments":{"data":[{"col1":"val1"}]}}',
-      '',
-      'REGLAS:',
-      '- Emite el bloque :::tool ANTES de continuar con tu respuesta.',
-      '- Puedes emitir VARIOS bloques en una misma respuesta.',
-      '- Si necesitas informacion, USA web_search primero, luego responde con los resultados.',
-      '- NO describas datos que podrias buscar — BUSCALOS.',
-    ].join('\n'),
-  });
+  // 150: Tool Guidance — Dynamic based on registered tools
+  const toolNames = ctx.toolNames || [];
+  const hasNativeTools = toolNames.length > 0;
+
+  if (hasNativeTools) {
+    // Native function calling mode — tools are sent via API parameter
+    const toolList = toolNames.map((name) => `  - ${name}`).join('\n');
+    sections.push({
+      name: 'tool:guidance',
+      order: 150,
+      text: [
+        '## HERRAMIENTAS DISPONIBLES',
+        '',
+        'Tienes las siguientes herramientas registradas:',
+        toolList,
+        '',
+        'INSTRUCCIONES:',
+        '- Cuando necesites usar una herramienta, indica tu intencion claramente.',
+        '- El sistema ejecutara la herramienta automaticamente y te devolvera el resultado.',
+        '- NO inventes datos que podrias buscar — usa web_search.',
+        '- NO describas visualizaciones que podrias generar — usa render_chart.',
+        '- Puedes usar multiples herramientas en una misma respuesta.',
+      ].join('\n'),
+    });
+  } else {
+    // Legacy text-based mode
+    sections.push({
+      name: 'tool:guidance',
+      order: 150,
+      text: [
+        '## HERRAMIENTAS — USO OBLIGATORIO',
+        '',
+        'Tienes 3 herramientas. DEBES usarlas cuando la tarea lo requiera.',
+        '',
+        'FORMATO:',
+        '```',
+        ':::tool',
+        '{"name":"NOMBRE","arguments":{...}}',
+        ':::',
+        '```',
+        '',
+        'HERRAMIENTAS:',
+        '',
+        '1) web_search — BUSCA en internet datos actuales.',
+        '   {"name":"web_search","arguments":{"query":"termino de busqueda"}}',
+        '',
+        '2) render_chart — GRAFICA datos.',
+        '   {"name":"render_chart","arguments":{"type":"bar","labels":["A","B"],"datasets":[{"label":"Serie","data":[10,20]}]}}',
+        '',
+        '3) generate_csv — GENERA datos tabulares.',
+        '   {"name":"generate_csv","arguments":{"data":[{"col1":"val1"}]}}',
+        '',
+        'REGLAS:',
+        '- Emite el bloque :::tool ANTES de continuar con tu respuesta.',
+        '- Puedes emitir VARIOS bloques en una misma respuesta.',
+        '- NO describas datos que podrias buscar — BUSCALOS.',
+      ].join('\n'),
+    });
+  }
 
   // 200: Safety & Compliance
   sections.push({
@@ -397,14 +498,24 @@ export function assemblePrompt(ctx: AssembleContext): string {
       '- No generes contenido malicioso, discriminatory o ilegal.',
       '- Respeta la privacidad: no solicites ni almacenes datos personales sensibles sin necesidad.',
       '- Si una solicitud es ambigua sobre permisos, pregunta al usuario antes de proceder.',
-      '- Advierte sobre riesgos de seguridad cuando genieres código que maneje autenticación, datos sensibles o operaciones destructivas.',
+      '- Advierte sobre riesgos de seguridad cuando genieres codigo que maneje autenticacion, datos sensibles o operaciones destructivas.',
     ].join('\n'),
   });
 
-  // Sort by order and join
-  sections.sort((a, b) => a.order - b.order);
+  // Sort by order and filter conditional sections
+  const filtered = sections.filter((s) => s.condition !== false);
+  filtered.sort((a, b) => a.order - b.order);
 
-  const parts = sections.map((s) => s.text.trim()).filter(Boolean);
+  // Interpolate variables in all sections
+  const parts = filtered.map((s) => {
+    let text = s.text;
+    if (s.variables) {
+      for (const [key, val] of Object.entries(s.variables)) {
+        text = text.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), val);
+      }
+    }
+    return text.trim();
+  }).filter(Boolean);
 
   // Add Ask Protocol
   parts.push(ASK_PROTOCOL_INSTRUCTIONS);
@@ -416,7 +527,7 @@ export function assemblePrompt(ctx: AssembleContext): string {
 
   // Add session-specific prompt if different from global
   if (ctx.sessionPrompt?.trim() && ctx.sessionPrompt.trim() !== ctx.customPrompt?.trim()) {
-    parts.push(`# CONTEXTO DE ESTA SESIÓN:\n${ctx.sessionPrompt.trim()}`);
+    parts.push(`# CONTEXTO DE ESTA SESION:\n${ctx.sessionPrompt.trim()}`);
   }
 
   return parts.join('\n\n');
