@@ -23,7 +23,8 @@ export interface InterceptorResult {
  */
 function parseJsonToolBlocks(text: string): ToolCall[] {
   const calls: ToolCall[] = [];
-  const regex = /:::tool\s*\n(\{[\s\S]*?\})\n:::/g;
+  // Only match :::tool (NOT :::chart or other ::: blocks)
+  const regex = /:::tool[\t ]*\n(\{[\s\S]*?\})\n:::/g;
   let m: RegExpExecArray | null;
   while ((m = regex.exec(text)) !== null) {
     try {
@@ -91,7 +92,8 @@ function tryParseValue(v: string): unknown {
  * Check if text contains any tool call patterns.
  */
 export function hasToolBlocks(text: string): boolean {
-  return /:::tool\s*\n\{[\s\S]*?\}\n:::/.test(text) ||
+  // Only match :::tool blocks (NOT :::chart or other ::: blocks)
+  return /:::tool[\t ]*\n\{[\s\S]*?\}\n:::/.test(text) ||
     /(?:Tool|Herramienta):\s*\w+\s+\w+:/i.test(text);
 }
 
@@ -102,8 +104,8 @@ export async function processToolBlocks(text: string): Promise<InterceptorResult
   const toolResults: Array<{ name: string; result: string }> = [];
   let cleanText = text;
 
-  // 1. Process :::tool JSON blocks
-  const jsonRegex = /:::tool\s*\n(\{[\s\S]*?\})\n:::/g;
+  // 1. Process :::tool JSON blocks (NOT :::chart)
+  const jsonRegex = /:::tool[\t ]*\n(\{[\s\S]*?\})\n:::/g;
   let jsonMatch: RegExpExecArray | null;
   while ((jsonMatch = jsonRegex.exec(cleanText)) !== null) {
     try {

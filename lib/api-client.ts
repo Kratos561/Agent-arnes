@@ -244,12 +244,16 @@ export async function sendChatMessageStream(
   const compaction = compactContext(formatted, windowMax, true);
   const contextMessages = compaction.messages;
 
-  const MAX_AGENTIC_ITERATIONS = 8;
+  const MAX_AGENTIC_ITERATIONS = 3;
   let agenticIteration = 0;
   let finalContent = '';
   let finalReasoning = '';
+  let toolJustProcessed = false;
 
   while (agenticIteration <= MAX_AGENTIC_ITERATIONS) {
+    // If tools were just processed and the model responded, break (prevent regeneration loop)
+    if (toolJustProcessed) break;
+
     // Reset per-iteration accumulators
     content = '';
     reasoning = '';
@@ -399,7 +403,7 @@ export async function sendChatMessageStream(
           const toolResultText = toolResults
             .map((tr) => `[Resultado de ${tr.name}]:\n${tr.result}`)
             .join('\n\n');
-          formatted.push({ role: 'user', content: `Aquí están los resultados de las herramientas que solicitaste:\n\n${toolResultText}\n\nAhora continúa con la tarea usando estos resultados. No vuelvas a llamar la misma herramienta con los mismos parámetros.` });
+          formatted.push({ role: 'user', content: `Herramientas ejecutadas correctamente. Aqui estan los resultados:\n\n${toolResultText}\n\nIMPORTANTE: Ya tienes la informacion que solicitaste. NO vuelvas a buscar los mismos datos. Ahora usa estos resultados para completar tu respuesta. Si ya generaste graficas, tablas o codigo, NO los repitas — simplemente entrega el resultado final.` });
 
           // Update content to clean version for the final output
           content = cleanText;
@@ -413,6 +417,7 @@ export async function sendChatMessageStream(
           contextMessages.splice(0, contextMessages.length, ...recompaction.messages);
 
           agenticIteration++;
+          toolJustProcessed = true;
           // Reset for next iteration
           finishReason = undefined;
           continue;

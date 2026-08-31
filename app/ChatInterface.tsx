@@ -455,7 +455,7 @@ export default function Home() {
             accumulatedContent += chunk;
             // Strip tool call artifacts during streaming for cleaner display
             const displayContent = accumulatedContent
-              .replace(/:::tool\s*\n\{[\s\S]*?\}\n:::/g, '')
+              .replace(/:::tool[\t ]*\n\{[\s\S]*?\}\n:::/g, '')
               .replace(/Tool call quote block:\s*/gi, '')
               .replace(/\*\*Tool call quote block:\*\*\s*/gi, '')
               .replace(/(?:^|\n)\s*(?:Tool|Herramienta):\s*\w+\s+\w+:[^\n]*(?:\n\s*\w+:[^\n]*)*/gi, '')
@@ -504,7 +504,7 @@ export default function Home() {
               .replace(/Tool call quote block:\s*/gi, '')
               .replace(/\*\*Tool call quote block:\*\*\s*/gi, '')
               // Strip any residual :::tool blocks (agentic loop in api-client already processed them)
-              .replace(/:::tool\s*\n\{[\s\S]*?\}\n:::/g, '')
+              .replace(/:::tool[\t ]*\n\{[\s\S]*?\}\n:::/g, '')
               .replace(/(?:^|\n)\s*(?:Tool|Herramienta):\s*\w+\s+\w+:[^\n]*(?:\n\s*\w+:[^\n]*)*/gi, '')
               .trim();
 
