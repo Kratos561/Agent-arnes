@@ -465,7 +465,7 @@ export default function Home() {
               if (s.id === sessionId) {
                 const msgs = s.messages.map((m) => {
                   if (m.id === assistantMessageId) {
-                    return { ...m, content: displayContent, _raw: accumulatedContent };
+                    return { ...m, content: displayContent };
                   }
                   return m;
                 });
@@ -493,8 +493,8 @@ export default function Home() {
             saveSessionsStreaming(liveUpdated);
           },
           onToolCall: (call) => {
-            // Append tool call indicator to the assistant message during streaming
-            const toolIndicator = `\n\n> 🔧 Ejecutando: \`${call.name}\`...\n`;
+            // Append tool call indicator as plain text (not blockquote, StreamRenderer strips those)
+            const toolIndicator = `\n\n⚙️ Ejecutando: \`${call.name}\`...\n`;
             accumulatedContent += toolIndicator;
             const liveSessions = getAppStoreSnapshot().sessions;
             const liveUpdated = liveSessions.map((s) => {
@@ -513,7 +513,7 @@ export default function Home() {
           },
           onToolResult: (result) => {
             // Replace the "executing" indicator with the result
-            const resultIndicator = `\n> ✅ \`${result.name}\` completado (${Math.round(result.executionTimeMs)}ms)\n`;
+            const resultIndicator = `\n✅ \`${result.name}\` completado (${Math.round(result.executionTimeMs)}ms)\n`;
             accumulatedContent += resultIndicator;
             const liveSessions = getAppStoreSnapshot().sessions;
             const liveUpdated = liveSessions.map((s) => {

@@ -369,11 +369,6 @@ export function assemblePrompt(ctx: AssembleContext): string {
     ...ctx.runtimeVars,
   };
 
-  // Helper: interpolate {{varName}} in text
-  const interpolate = (text: string, vars: Record<string, string>): string => {
-    return text.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? `{{${key}}}`);
-  };
-
   // -100: Harness Identity (fixed)
   sections.push({
     name: 'harness:identity',

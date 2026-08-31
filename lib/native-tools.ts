@@ -401,10 +401,14 @@ function safeJsonParse(s: string): Record<string, unknown> {
   try { return JSON.parse(s); } catch { return {}; }
 }
 
+let _builtinToolsRegistered = false;
+
 /**
  * Register all built-in browser tools.
  */
 export function registerBuiltinTools(): void {
+  if (_builtinToolsRegistered) return;
+  _builtinToolsRegistered = true;
   // web_search
   registerTool(
     {

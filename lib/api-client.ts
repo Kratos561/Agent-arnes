@@ -11,7 +11,6 @@ import {
   getRegisteredToolNames,
   executeNativeTools,
   extractToolCallsFromResponse,
-  extractToolCallFromDelta,
   isToolCallsFinishReason,
   buildToolResultMessages,
   buildAssistantToolCallMessage,
@@ -263,11 +262,11 @@ export async function sendChatMessageStream(
   const hasNativeTools = getToolSchemas().length > 0;
 
   while (agenticIteration <= MAX_AGENTIC_ITERATIONS) {
-    if (toolJustProcessed) break;
-
+    // Reset per-iteration state (but NOT toolJustProcessed - that's checked after runRequest)
     content = '';
     reasoning = '';
     finishReason = undefined;
+    toolJustProcessed = false;
 
     const runRequest = async (useStream: boolean): Promise<boolean> => {
       let autoContinueCount = 0;
