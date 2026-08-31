@@ -2,6 +2,7 @@ import { ChatMessage, ModelInfo, ModelParameters, ProviderConfig } from './types
 import { compactContext } from './compaction';
 import { ASK_PROTOCOL_INSTRUCTIONS } from './agent-protocol';
 import { assemblePrompt, AgentRule, AgentSkill, PersonaConfig } from './agent-infra';
+import { processToolBlocks, hasToolBlocks } from './tool-interceptor';
 
 export interface StreamCallbacks {
   onChunk: (chunk: string) => void;
@@ -243,138 +244,175 @@ export async function sendChatMessageStream(
   const compaction = compactContext(formatted, windowMax, true);
   const contextMessages = compaction.messages;
 
-  /**
-   * Ejecuta la petición al proveedor completa (incluyendo auto-continuación).
-   * @param useStream Si true usa streaming SSE; si false pide la respuesta completa.
-   * @returns una promesa que resuelve al terminar (sin lanzar hacia el interior).
-   */
-  const runRequest = async (useStream: boolean): Promise<void> => {
-    let autoContinueCount = 0;
-    const MAX_AUTO_CONTINUES = parameters.auto_continue !== false ? 3 : 0;
+  const MAX_AGENTIC_ITERATIONS = 8;
+  let agenticIteration = 0;
 
-    while (true) {
-      const payload: Record<string, unknown> = {
-        model: modelId.trim(),
-        messages: contextMessages,
-        stream: useStream,
-        temperature: parameters.temperature,
-        top_p: parameters.top_p,
-      };
-
-      if (parameters.max_tokens && parameters.max_tokens > 0) {
-        payload.max_tokens = parameters.max_tokens;
-      }
-
-      if (parameters.presence_penalty) payload.presence_penalty = parameters.presence_penalty;
-      if (parameters.frequency_penalty) payload.frequency_penalty = parameters.frequency_penalty;
-
-      if (provider.id === 'openrouter') {
-        payload.include_reasoning = true;
-        if (parameters.reasoning_effort && parameters.reasoning_effort !== 'auto') {
-          payload.reasoning = { effort: parameters.reasoning_effort };
-        }
-      }
-
-      const { response } = await fetchWithCORSFallback(
-        endpoint(provider.baseUrl, 'chat/completions'),
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...headersFor(provider, useStream) },
-          body: JSON.stringify(payload),
-          signal,
-        },
-        provider,
-        provider.useProxy !== false
-      );
-
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        throw new Error(body?.error?.message || body?.message || `Error HTTP ${response.status}`);
-      }
-
-      const contentType = response.headers.get('content-type') || '';
-      if (!useStream || !contentType.includes('text/event-stream')) {
-        // Respuesta no-secuencial: esperamos un JSON único
-        const body = await response.json();
-        const delta = extractDelta(body);
-        content += delta.content;
-        reasoning += delta.reasoning;
-        finishReason = delta.finishReason;
-        usage = delta.usage && { prompt: delta.usage.prompt_tokens, completion: delta.usage.completion_tokens, total: delta.usage.total_tokens };
-        if (delta.reasoning) callbacks.onReasoning?.(delta.reasoning);
-        if (delta.content) callbacks.onChunk(delta.content);
-        break;
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('El proveedor no entregó un flujo de respuesta.');
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      const consumeLine = (line: string) => {
-        const value = line.trim();
-        if (!value.startsWith('data:')) return;
-        const json = value.slice(5).trim();
-        if (!json || json === '[DONE]') return;
-        try {
-          const delta = extractDelta(JSON.parse(json));
-          if (delta.reasoning) { reasoning += delta.reasoning; callbacks.onReasoning?.(delta.reasoning); }
-          if (delta.content) { content += delta.content; callbacks.onChunk(delta.content); }
-          if (delta.finishReason) finishReason = delta.finishReason;
-          if (delta.usage) usage = { prompt: delta.usage.prompt_tokens, completion: delta.usage.completion_tokens, total: delta.usage.total_tokens };
-        } catch {}
-      };
+  while (agenticIteration <= MAX_AGENTIC_ITERATIONS) {
+    const runRequest = async (useStream: boolean): Promise<boolean> => {
+      let autoContinueCount = 0;
+      const MAX_AUTO_CONTINUES = parameters.auto_continue !== false ? 3 : 0;
+      let iterationContent = '';
+      let iterationReasoning = '';
 
       while (true) {
-        const { value, done } = await reader.read();
-        buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
-        const lines = buffer.split(/\r?\n/);
-        buffer = lines.pop() || '';
-        lines.forEach(consumeLine);
-        if (done) break;
+        const payload: Record<string, unknown> = {
+          model: modelId.trim(),
+          messages: contextMessages,
+          stream: useStream,
+          temperature: parameters.temperature,
+          top_p: parameters.top_p,
+        };
+
+        if (parameters.max_tokens && parameters.max_tokens > 0) {
+          payload.max_tokens = parameters.max_tokens;
+        }
+
+        if (parameters.presence_penalty) payload.presence_penalty = parameters.presence_penalty;
+        if (parameters.frequency_penalty) payload.frequency_penalty = parameters.frequency_penalty;
+
+        if (provider.id === 'openrouter') {
+          payload.include_reasoning = true;
+          if (parameters.reasoning_effort && parameters.reasoning_effort !== 'auto') {
+            payload.reasoning = { effort: parameters.reasoning_effort };
+          }
+        }
+
+        const { response } = await fetchWithCORSFallback(
+          endpoint(provider.baseUrl, 'chat/completions'),
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...headersFor(provider, useStream) },
+            body: JSON.stringify(payload),
+            signal,
+          },
+          provider,
+          provider.useProxy !== false
+        );
+
+        if (!response.ok) {
+          const body = await response.json().catch(() => null);
+          throw new Error(body?.error?.message || body?.message || `Error HTTP ${response.status}`);
+        }
+
+        const contentType = response.headers.get('content-type') || '';
+        if (!useStream || !contentType.includes('text/event-stream')) {
+          const body = await response.json();
+          const delta = extractDelta(body);
+          iterationContent += delta.content;
+          iterationReasoning += delta.reasoning;
+          finishReason = delta.finishReason;
+          usage = delta.usage && { prompt: delta.usage.prompt_tokens, completion: delta.usage.completion_tokens, total: delta.usage.total_tokens };
+          if (delta.reasoning) { reasoning += delta.reasoning; callbacks.onReasoning?.(delta.reasoning); }
+          if (delta.content) { content += delta.content; callbacks.onChunk(delta.content); }
+          break;
+        }
+
+        const reader = response.body?.getReader();
+        if (!reader) throw new Error('El proveedor no entregó un flujo de respuesta.');
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        const consumeLine = (line: string) => {
+          const value = line.trim();
+          if (!value.startsWith('data:')) return;
+          const json = value.slice(5).trim();
+          if (!json || json === '[DONE]') return;
+          try {
+            const delta = extractDelta(JSON.parse(json));
+            if (delta.reasoning) { iterationReasoning += delta.reasoning; reasoning += delta.reasoning; callbacks.onReasoning?.(delta.reasoning); }
+            if (delta.content) { iterationContent += delta.content; content += delta.content; callbacks.onChunk(delta.content); }
+            if (delta.finishReason) finishReason = delta.finishReason;
+            if (delta.usage) usage = { prompt: delta.usage.prompt_tokens, completion: delta.usage.completion_tokens, total: delta.usage.total_tokens };
+          } catch {}
+        };
+
+        while (true) {
+          const { value, done } = await reader.read();
+          buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+          const lines = buffer.split(/\r?\n/);
+          buffer = lines.pop() || '';
+          lines.forEach(consumeLine);
+          if (done) break;
+        }
+        if (buffer) consumeLine(buffer);
+
+        if (finishReason === 'length' && autoContinueCount < MAX_AUTO_CONTINUES && !signal?.aborted) {
+          autoContinueCount++;
+          const continuationPrompt = iterationContent.trim()
+            ? `Continúa exactamente desde donde te quedaste sin repetir nada previo.`
+            : `Has completado la fase de razonamiento. Ahora redacta la respuesta completa y detallada.`;
+          formatted.push({ role: 'assistant', content: iterationContent || iterationReasoning });
+          formatted.push({ role: 'user', content: continuationPrompt });
+          const recompaction = compactContext(formatted, windowMax, true);
+          contextMessages.splice(0, contextMessages.length, ...recompaction.messages);
+          iterationContent = '';
+          iterationReasoning = '';
+          continue;
+        }
+
+        break;
       }
-      if (buffer) consumeLine(buffer);
+      return iterationContent.length > 0;
+    };
 
-      if (finishReason === 'length' && autoContinueCount < MAX_AUTO_CONTINUES && !signal?.aborted) {
-        autoContinueCount++;
-        const continuationPrompt = content.trim()
-          ? `Continúa exactamente desde donde te quedaste sin repetir nada previo.`
-          : `Has completado la fase de razonamiento. Ahora redacta la respuesta completa y detallada.`;
-        formatted.push({ role: 'assistant', content: content || reasoning });
-        formatted.push({ role: 'user', content: continuationPrompt });
-        const recompaction = compactContext(formatted, windowMax, true);
-        contextMessages.splice(0, contextMessages.length, ...recompaction.messages);
-        continue;
-      }
-
-      break;
-    }
-  };
-
-  try {
-    // Intento principal: streaming (según preferencias del usuario)
+    // Primary: streaming, fallback: non-streaming
     try {
-      await runRequest(parameters.stream);
-    } catch (primaryError) {
-      // Si el streaming falló a través del proxy (común en proxies que no
-      // soportan SSE), reintentamos en modo no-streaming con JSON.
-      if (parameters.stream && !signal?.aborted) {
-        content = '';
-        reasoning = '';
-        finishReason = undefined;
-        usage = undefined;
-        await runRequest(false);
-      } else {
-        throw primaryError;
+      try {
+        await runRequest(parameters.stream);
+      } catch (primaryError) {
+        if (parameters.stream && !signal?.aborted) {
+          content = '';
+          reasoning = '';
+          finishReason = undefined;
+          usage = undefined;
+          await runRequest(false);
+        } else {
+          throw primaryError;
+        }
       }
-    }
-
-    callbacks.onDone(content, reasoning, usage, finishReason || 'stop');
-  } catch (error) {
-    if (signal?.aborted) {
-      callbacks.onDone(content, reasoning, usage, 'stop');
+    } catch (error) {
+      if (signal?.aborted) {
+        callbacks.onDone(content, reasoning, usage, 'stop');
+        return;
+      }
+      callbacks.onError(corsHint(provider, error));
       return;
     }
-    callbacks.onError(corsHint(provider, error));
+
+    // --- Agentic Loop: detect tool calls and feed results back ---
+    if (signal?.aborted || agenticIteration >= MAX_AGENTIC_ITERATIONS) break;
+
+    if (hasToolBlocks(content)) {
+      try {
+        const { cleanText, toolResults } = await processToolBlocks(content);
+        if (toolResults.length > 0) {
+          // Append the assistant response with tool calls to conversation history
+          formatted.push({ role: 'assistant', content });
+          // Append tool results as a system/user message so the model can use them
+          const toolResultText = toolResults
+            .map((tr) => `[Resultado de ${tr.name}]:\n${tr.result}`)
+            .join('\n\n');
+          formatted.push({ role: 'user', content: `Aquí están los resultados de las herramientas que solicitaste:\n\n${toolResultText}\n\nAhora continúa con la tarea usando estos resultados. No vuelvas a llamar la misma herramienta con los mismos parámetros.` });
+
+          // Update content to clean version for the final output
+          content = cleanText;
+
+          // Recompress context
+          const recompaction = compactContext(formatted, windowMax, true);
+          contextMessages.splice(0, contextMessages.length, ...recompaction.messages);
+
+          agenticIteration++;
+          // Reset for next iteration
+          finishReason = undefined;
+          continue;
+        }
+      } catch {
+        // Tool processing failed, continue with clean content
+      }
+    }
+
+    break; // No tool calls or max iterations reached
   }
+
+  callbacks.onDone(content, reasoning, usage, finishReason || 'stop');
 }

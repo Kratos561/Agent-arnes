@@ -158,6 +158,52 @@ export function saveSessions(sessions: ChatSession[]) {
   }
 }
 
+/**
+ * Lightweight in-memory-only session update for streaming.
+ * Skips the expensive localStorage.setItem + JSON.stringify on every chunk.
+ * Only notifies React subscribers for live display. Call saveSessions() at
+ * stream end to persist to disk.
+ */
+let _streamingRafId: number | null = null;
+let _pendingSessions: ChatSession[] | null = null;
+
+export function saveSessionsStreaming(sessions: ChatSession[]) {
+  if (typeof window === 'undefined') return;
+  _pendingSessions = sessions;
+  // Update in-memory snapshot immediately for useSyncExternalStore
+  notifyAppStoreUpdate({ sessions });
+  // Deduplicate localStorage writes to one per animation frame (~60fps max)
+  if (_streamingRafId === null) {
+    _streamingRafId = requestAnimationFrame(() => {
+      _streamingRafId = null;
+      if (_pendingSessions) {
+        try {
+          localStorage.setItem(STORAGE_KEYS.SESSIONS, JSON.stringify(_pendingSessions));
+        } catch (e) {
+          console.error('Error saving streaming sessions', e);
+        }
+        _pendingSessions = null;
+      }
+    });
+  }
+}
+
+/** Force-flush any pending streaming save to localStorage (call on stream done/error). */
+export function flushStreamingSave() {
+  if (_streamingRafId !== null) {
+    cancelAnimationFrame(_streamingRafId);
+    _streamingRafId = null;
+  }
+  if (_pendingSessions) {
+    try {
+      localStorage.setItem(STORAGE_KEYS.SESSIONS, JSON.stringify(_pendingSessions));
+    } catch (e) {
+      console.error('Error flushing streaming sessions', e);
+    }
+    _pendingSessions = null;
+  }
+}
+
 export function loadActiveSessionId(): string | null {
   if (typeof window === 'undefined') return null;
   return localStorage.getItem(STORAGE_KEYS.ACTIVE_SESSION_ID);

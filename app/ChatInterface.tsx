@@ -34,6 +34,8 @@ import {
   loadCachedModels, 
   saveCachedModels, 
   saveSessions, 
+  saveSessionsStreaming,
+  flushStreamingSave,
   saveActiveSessionId, 
   saveGlobalSystemPrompt,
   saveAgentRules,
@@ -147,6 +149,7 @@ export default function Home() {
     return () => {
       abortControllerRef.current?.abort();
       abortControllerRef.current = null;
+      flushStreamingSave();
     };
   }, []);
 
@@ -187,6 +190,7 @@ export default function Home() {
       abortControllerRef.current.abort();
       setIsGenerating(false);
     }
+    flushStreamingSave();
 
     const currentSessions = getAppStoreSnapshot().sessions;
     const newSess = createNewSession(activeProviderId, activeModelId, globalSystemPrompt);
@@ -475,7 +479,7 @@ export default function Home() {
               }
               return s;
             });
-            saveSessions(liveUpdated);
+            saveSessionsStreaming(liveUpdated);
           },
           onReasoning: (reasoningChunk) => {
             accumulatedReasoning += reasoningChunk;
@@ -492,11 +496,12 @@ export default function Home() {
               }
               return s;
             });
-            saveSessions(liveUpdated);
+            saveSessionsStreaming(liveUpdated);
           },
           onDone: async (finalContent, finalReasoning, tokens, finishReason) => {
             setIsGenerating(false);
             abortControllerRef.current = null;
+            flushStreamingSave();
             const doneTimestamp = getCurrentTimestamp();
             let combined = finalContent || accumulatedContent;
 
@@ -546,6 +551,7 @@ export default function Home() {
           onError: (errMessage) => {
             setIsGenerating(false);
             abortControllerRef.current = null;
+            flushStreamingSave();
             const errTimestamp = getCurrentTimestamp();
             const liveSessions = getAppStoreSnapshot().sessions;
             const newSessions = liveSessions.map((s) => {
@@ -625,6 +631,7 @@ export default function Home() {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
+    flushStreamingSave();
     setIsGenerating(false);
   };
 
@@ -744,12 +751,13 @@ export default function Home() {
             }
             return s;
           });
-          saveSessions(liveUpdated);
+          saveSessionsStreaming(liveUpdated);
         },
         onReasoning: () => {},
         onDone: (finalChunkContent, _, tokens, finishReason) => {
           setIsGenerating(false);
           abortControllerRef.current = null;
+          flushStreamingSave();
           const doneTimestamp = getCurrentTimestamp();
           const liveSessions = getAppStoreSnapshot().sessions;
           const newSessions = liveSessions.map((s) => {
@@ -781,6 +789,7 @@ export default function Home() {
         onError: (errMessage) => {
           setIsGenerating(false);
           abortControllerRef.current = null;
+          flushStreamingSave();
           const liveSessions = getAppStoreSnapshot().sessions;
           const newSessions = liveSessions.map((s) => {
             if (s.id === currentSessionId) {
