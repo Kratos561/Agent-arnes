@@ -47,7 +47,6 @@ import {
 import { createId, getCurrentTimestamp } from '@/lib/utils';
 import { sendChatMessageStream } from '@/lib/api-client';
 import { parseAskBlocks } from '@/lib/agent-protocol';
-import { processToolBlocks, hasToolBlocks } from '@/lib/tool-interceptor';
 import { windowSizeForContextLength } from '@/lib/compaction';
 import { estimateTokenCount } from '@/lib/context-manager';
 import { Sidebar } from '@/components/Sidebar';
@@ -454,17 +453,18 @@ export default function Home() {
         {
           onChunk: (chunk) => {
             accumulatedContent += chunk;
-            // Strip visible tool call artifacts during streaming for cleaner display
+            // Strip tool call artifacts during streaming for cleaner display
             const displayContent = accumulatedContent
+              .replace(/:::tool\s*\n\{[\s\S]*?\}\n:::/g, '')
               .replace(/Tool call quote block:\s*/gi, '')
               .replace(/\*\*Tool call quote block:\*\*\s*/gi, '')
-              .replace(/(?:^|\n)\s*(?:Tool|Herramienta):\s*\w+\s+\w+:[^\n]*(?:\n\s*\w+:[^\n]*)*/gi, '');
+              .replace(/(?:^|\n)\s*(?:Tool|Herramienta):\s*\w+\s+\w+:[^\n]*(?:\n\s*\w+:[^\n]*)*/gi, '')
+              .trim();
             const liveSessions = getAppStoreSnapshot().sessions;
             const liveUpdated = liveSessions.map((s) => {
               if (s.id === sessionId) {
                 const msgs = s.messages.map((m) => {
                   if (m.id === assistantMessageId) {
-                    // Use displayContent for live rendering (clean), keep accumulated for processing
                     return { ...m, content: displayContent, _raw: accumulatedContent };
                   }
                   return m;
@@ -502,18 +502,11 @@ export default function Home() {
             // Pre-clean: remove visible tool call artifacts
             combined = combined
               .replace(/Tool call quote block:\s*/gi, '')
-              .replace(/\*\*Tool call quote block:\*\*\s*/gi, '');
-
-            // Process :::tool blocks + natural language tool calls silently
-            if (hasToolBlocks(combined)) {
-              try {
-                const { cleanText } = await processToolBlocks(combined);
-                combined = cleanText;
-              } catch (e) {
-                // If tool processing fails, keep original content
-                console.warn('Tool interceptor error:', e);
-              }
-            }
+              .replace(/\*\*Tool call quote block:\*\*\s*/gi, '')
+              // Strip any residual :::tool blocks (agentic loop in api-client already processed them)
+              .replace(/:::tool\s*\n\{[\s\S]*?\}\n:::/g, '')
+              .replace(/(?:^|\n)\s*(?:Tool|Herramienta):\s*\w+\s+\w+:[^\n]*(?:\n\s*\w+:[^\n]*)*/gi, '')
+              .trim();
 
             // Parsear bloques "ask" del modelo: separar el texto visible de las preguntas pendientes
             const { asks, text: visibleContent } = parseAskBlocks(combined);

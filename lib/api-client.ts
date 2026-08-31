@@ -246,8 +246,15 @@ export async function sendChatMessageStream(
 
   const MAX_AGENTIC_ITERATIONS = 8;
   let agenticIteration = 0;
+  let finalContent = '';
+  let finalReasoning = '';
 
   while (agenticIteration <= MAX_AGENTIC_ITERATIONS) {
+    // Reset per-iteration accumulators
+    content = '';
+    reasoning = '';
+    finishReason = undefined;
+
     const runRequest = async (useStream: boolean): Promise<boolean> => {
       let autoContinueCount = 0;
       const MAX_AUTO_CONTINUES = parameters.auto_continue !== false ? 3 : 0;
@@ -372,7 +379,7 @@ export async function sendChatMessageStream(
       }
     } catch (error) {
       if (signal?.aborted) {
-        callbacks.onDone(content, reasoning, usage, 'stop');
+        callbacks.onDone(finalContent || content, finalReasoning || reasoning, usage, 'stop');
         return;
       }
       callbacks.onError(corsHint(provider, error));
@@ -397,6 +404,10 @@ export async function sendChatMessageStream(
           // Update content to clean version for the final output
           content = cleanText;
 
+          // Accumulate final content across iterations
+          finalContent = (finalContent ? finalContent + '\n\n' : '') + cleanText;
+          finalReasoning = (finalReasoning ? finalReasoning + '\n\n' : '') + reasoning;
+
           // Recompress context
           const recompaction = compactContext(formatted, windowMax, true);
           contextMessages.splice(0, contextMessages.length, ...recompaction.messages);
@@ -414,5 +425,5 @@ export async function sendChatMessageStream(
     break; // No tool calls or max iterations reached
   }
 
-  callbacks.onDone(content, reasoning, usage, finishReason || 'stop');
+  callbacks.onDone(finalContent || content, finalReasoning || reasoning, usage, finishReason || 'stop');
 }
