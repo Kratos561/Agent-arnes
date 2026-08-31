@@ -64,6 +64,7 @@ import { RulesModal } from '@/components/RulesModal';
 import { SkillsModal } from '@/components/SkillsModal';
 import { SafeErrorBoundary } from '@/components/SafeErrorBoundary';
 import { AuthScreen } from '@/components/AuthScreen';
+import { getLocalSession, clearLocalSession } from '@/lib/auth-config';
 
 export default function Home() {
   // Auth state
@@ -72,18 +73,11 @@ export default function Home() {
 
   // Check for existing session on mount
   useEffect(() => {
-    (async () => {
-      try {
-        const { getCurrentUser } = await import('@/lib/supabase');
-        const user = await getCurrentUser();
-        if (user) {
-          setAuthEmail(user.email);
-        }
-      } catch {
-        // Ignore
-      }
-      setAuthChecked(true);
-    })();
+    const session = getLocalSession();
+    if (session) {
+      setAuthEmail(session.email);
+    }
+    setAuthChecked(true);
   }, []);
   // Hydration-safe reactive store from LocalStorage
   const appState = useSyncExternalStore(
@@ -1036,9 +1030,8 @@ export default function Home() {
             {authEmail && authEmail !== 'local' && (
               <button
                 type="button"
-                onClick={async () => {
-                  const { signOut } = await import('@/lib/supabase');
-                  await signOut();
+                onClick={() => {
+                  clearLocalSession();
                   setAuthEmail(null);
                 }}
                 title="Cerrar sesion"
