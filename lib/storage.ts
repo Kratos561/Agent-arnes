@@ -1,6 +1,16 @@
 import { ProviderConfig, ChatSession, ModelInfo, PRESET_PROVIDERS, VERIFIED_DEFAULT_MODELS, DEFAULT_PARAMETERS } from './types';
 import { createId } from './utils';
 import { AgentRule, AgentSkill, PersonaConfig, DEFAULT_RULES, DEFAULT_SKILLS, DEFAULT_PERSONAS } from './agent-infra';
+import {
+  AgentMemory,
+  AgentPlan,
+  AgentCheckpoint,
+  AgentTodo,
+  EMPTY_MEMORY,
+  EMPTY_PLAN,
+  ToolPermissions,
+  defaultPermissions,
+} from './claude-runtime';
 
 const STORAGE_KEYS = {
   PROVIDERS: 'chat_providers_v1',
@@ -15,6 +25,11 @@ const STORAGE_KEYS = {
   AGENT_SKILLS: 'chat_agent_skills_v1',
   AGENT_PERSONAS: 'chat_agent_personas_v1',
   ACTIVE_PERSONA_ID: 'chat_active_persona_id_v1',
+  TOOL_PERMISSIONS: 'agent_arnes_tool_permissions_v1',
+  TODOS_BY_SESSION: 'agent_arnes_todos_v1',
+  MEMORY: 'agent_arnes_memory_v1',
+  PLANS_BY_SESSION: 'agent_arnes_plans_v1',
+  CHECKPOINT: 'agent_arnes_checkpoint_v1',
 };
 
 export const INITIAL_SESSION_ID = 'default_chat_session';
@@ -324,6 +339,129 @@ export function saveActivePersonaId(id: string) {
   notifyAppStoreUpdate({ activePersonaId: id });
 }
 
+// --- Claude Runtime: permisos, TODOs, memoria, planes, checkpoints ---
+// Todo persiste en localStorage; el proveedor solo recibe texto ya autorizado.
+
+export function loadToolPermissions(): ToolPermissions {
+  if (typeof window === 'undefined') return defaultPermissions();
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.TOOL_PERMISSIONS);
+    if (!raw) return defaultPermissions();
+    const parsed = JSON.parse(raw) as ToolPermissions;
+    return { ...defaultPermissions(), ...(parsed || {}) };
+  } catch {
+    return defaultPermissions();
+  }
+}
+
+export function saveToolPermissions(permissions: ToolPermissions) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(STORAGE_KEYS.TOOL_PERMISSIONS, JSON.stringify(permissions));
+    notifyAppStoreUpdate({ toolPermissions: permissions });
+  } catch (e) {
+    console.error('Error saving tool permissions', e);
+  }
+}
+
+export function loadTodosBySession(): Record<string, AgentTodo[]> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.TODOS_BY_SESSION);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, AgentTodo[]>;
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveTodosBySession(todos: Record<string, AgentTodo[]>) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(STORAGE_KEYS.TODOS_BY_SESSION, JSON.stringify(todos));
+    notifyAppStoreUpdate({ todosBySession: todos });
+  } catch (e) {
+    console.error('Error saving todos', e);
+  }
+}
+
+export function loadAgentMemory(): AgentMemory {
+  if (typeof window === 'undefined') return EMPTY_MEMORY;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.MEMORY);
+    if (!raw) return EMPTY_MEMORY;
+    const parsed = JSON.parse(raw) as AgentMemory;
+    if (!parsed || typeof parsed !== 'object') return EMPTY_MEMORY;
+    return {
+      project: typeof parsed.project === 'string' ? parsed.project : '',
+      session: typeof parsed.session === 'string' ? parsed.session : '',
+      updatedAt: typeof parsed.updatedAt === 'number' ? parsed.updatedAt : 0,
+    };
+  } catch {
+    return EMPTY_MEMORY;
+  }
+}
+
+export function saveAgentMemory(memory: AgentMemory) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(STORAGE_KEYS.MEMORY, JSON.stringify(memory));
+    notifyAppStoreUpdate({ memory });
+  } catch (e) {
+    console.error('Error saving agent memory', e);
+  }
+}
+
+export function loadPlansBySession(): Record<string, AgentPlan> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.PLANS_BY_SESSION);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, AgentPlan>;
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function savePlansBySession(plans: Record<string, AgentPlan>) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(STORAGE_KEYS.PLANS_BY_SESSION, JSON.stringify(plans));
+    notifyAppStoreUpdate({ plansBySession: plans });
+  } catch (e) {
+    console.error('Error saving plans', e);
+  }
+}
+
+export function loadCheckpoint(): AgentCheckpoint | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.CHECKPOINT);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as AgentCheckpoint;
+    if (!parsed || !Array.isArray(parsed.messages)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function saveCheckpoint(checkpoint: AgentCheckpoint | null) {
+  if (typeof window === 'undefined') return;
+  try {
+    if (checkpoint) {
+      localStorage.setItem(STORAGE_KEYS.CHECKPOINT, JSON.stringify(checkpoint));
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.CHECKPOINT);
+    }
+    notifyAppStoreUpdate({ checkpoint });
+  } catch (e) {
+    console.error('Error saving checkpoint', e);
+  }
+}
+
 // --- Create New Session ---
 export function createNewSession(providerId: string, modelId: string, systemPrompt?: string): ChatSession {
   return {
@@ -352,6 +490,11 @@ export interface AppStorageState {
   agentSkills: AgentSkill[];
   agentPersonas: PersonaConfig[];
   activePersonaId: string;
+  toolPermissions: ToolPermissions;
+  todosBySession: Record<string, AgentTodo[]>;
+  memory: AgentMemory;
+  plansBySession: Record<string, AgentPlan>;
+  checkpoint: AgentCheckpoint | null;
 }
 
 const SERVER_SNAPSHOT: AppStorageState = {
@@ -366,6 +509,11 @@ const SERVER_SNAPSHOT: AppStorageState = {
   agentSkills: DEFAULT_SKILLS,
   agentPersonas: DEFAULT_PERSONAS,
   activePersonaId: 'persona-general',
+  toolPermissions: defaultPermissions(),
+  todosBySession: {},
+  memory: EMPTY_MEMORY,
+  plansBySession: {},
+  checkpoint: null,
 };
 
 let clientSnapshot: AppStorageState = SERVER_SNAPSHOT;
@@ -431,6 +579,11 @@ export function getAppStoreSnapshot(): AppStorageState {
       agentSkills: loadAgentSkills(),
       agentPersonas: loadAgentPersonas(),
       activePersonaId: loadActivePersonaId(),
+      toolPermissions: loadToolPermissions(),
+      todosBySession: loadTodosBySession(),
+      memory: loadAgentMemory(),
+      plansBySession: loadPlansBySession(),
+      checkpoint: loadCheckpoint(),
     };
   }
   return clientSnapshot;

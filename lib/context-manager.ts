@@ -17,7 +17,7 @@ export function estimateTokenCount(text: string): number {
 
 export function pruneMessagesForContext(
   messages: MessageInput[],
-  maxTokens = 6000
+  maxTokens = 64000
 ): MessageInput[] {
   if (!messages || messages.length === 0) return [];
 

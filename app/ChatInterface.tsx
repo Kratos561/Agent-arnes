@@ -2,28 +2,46 @@
 
 
 import React, { useState, useEffect, useRef, useCallback, useMemo, useSyncExternalStore } from 'react';
-import { 
-  Menu, 
-  Plus, 
-  Sliders, 
-  Wand2, 
-  Share2, 
-  Trash2, 
-  Settings, 
+import {
+  Menu,
+  Plus,
+  Sliders,
+  Wand2,
+  Share2,
+  Trash2,
+  Settings,
   Wrench,
   Shield,
   Sparkles,
   LogOut,
+  Undo2,
+  ListTodo,
 } from 'lucide-react';
-import { 
-  ProviderConfig, 
-  ModelInfo, 
-  ChatSession, 
-  ChatMessage, 
+import {
+  ProviderConfig,
+  ModelInfo,
+  ChatSession,
+  ChatMessage,
   ModelParameters,
   DEFAULT_PARAMETERS,
   AskPayload,
+  ToolTranscriptEvent,
 } from '@/lib/types';
+import {
+  AgentTodo,
+  buildSubagentRequest,
+  buildSubagentSystemPrompt,
+  createCheckpoint,
+  createPlan,
+  createTodo,
+  isKnownSlash,
+  isToolAllowed,
+  parseSlashCommand,
+  setTodoStatus,
+  SLASH_COMMANDS,
+  transcriptToText,
+} from '@/lib/claude-runtime';
+import { setToolPermissionChecker } from '@/lib/native-tools';
 import { 
   subscribeAppStore,
   getAppStoreSnapshot,
@@ -42,10 +60,15 @@ import {
   saveAgentSkills,
   saveAgentPersonas,
   saveActivePersonaId,
+  saveToolPermissions,
+  saveTodosBySession,
+  saveAgentMemory,
+  savePlansBySession,
+  saveCheckpoint,
   createNewSession
 } from '@/lib/storage';
 import { createId, getCurrentTimestamp } from '@/lib/utils';
-import { sendChatMessageStream } from '@/lib/api-client';
+import { requestSingleCompletion, sendChatMessageStream } from '@/lib/api-client';
 import { parseAskBlocks } from '@/lib/agent-protocol';
 import { windowSizeForContextLength } from '@/lib/compaction';
 import { estimateTokenCount } from '@/lib/context-manager';
@@ -97,7 +120,18 @@ export default function Home() {
     agentSkills,
     agentPersonas,
     activePersonaId,
+    toolPermissions,
+    todosBySession,
+    memory,
+    plansBySession,
+    checkpoint,
   } = appState;
+
+  // Enforce tool permissions en llamadas autónomas del modelo (fail-closed).
+  useEffect(() => {
+    setToolPermissionChecker((name) => isToolAllowed(name, getAppStoreSnapshot().toolPermissions));
+    return () => setToolPermissionChecker(null);
+  }, []);
 
   const [cachedModelsOverride, setCachedModelsOverride] = useState<ModelInfo[] | null>(null);
   const activeCachedModels = cachedModelsOverride !== null ? cachedModelsOverride : cachedModels;
@@ -118,6 +152,25 @@ export default function Home() {
   const activePersona = useMemo(() => {
     return agentPersonas?.find((p) => p.id === activePersonaId) || null;
   }, [agentPersonas, activePersonaId]);
+
+  // Claude runtime: TODOs y plan de la sesión activa + snapshot para el prompt
+  const activeSessionForRuntime = sessions.find((s) => s.id === activeSessionId) || null;
+  const activeTodos: AgentTodo[] = useMemo(() => {
+    if (!activeSessionForRuntime) return [];
+    return todosBySession?.[activeSessionForRuntime.id] || [];
+  }, [todosBySession, activeSessionForRuntime?.id]);
+  const activePlan = useMemo(() => {
+    if (!activeSessionForRuntime) return null;
+    return plansBySession?.[activeSessionForRuntime.id] || null;
+  }, [plansBySession, activeSessionForRuntime?.id]);
+  const openTodoCount = activeTodos.filter((t) => t.status !== 'completed').length;
+
+  const runtimeSnapshot = useMemo(() => ({
+    todos: activeTodos,
+    memory,
+    plan: activePlan,
+    toolPermissions,
+  }), [activeTodos, memory, activePlan, toolPermissions]);
   
   // Streaming state
   const [isGenerating, setIsGenerating] = useState(false);
@@ -399,6 +452,11 @@ export default function Home() {
       const activeModelInfo = activeCachedModels.find((m) => m.id === activeModelId);
       const contextWindow = windowSizeForContextLength(activeModelInfo?.context_length);
 
+      // Checkpoint estilo Claude Code: foto previa al turno para /undo (best-effort).
+      try {
+        saveCheckpoint(createCheckpoint(sessionId, [...contextMessages], userContent.slice(0, 80)));
+      } catch { /* no bloquea el turno */ }
+
       const userMessage: ChatMessage = {
         id: createId('msg_u'),
         role: 'user',
@@ -443,6 +501,7 @@ export default function Home() {
 
       let accumulatedContent = '';
       let accumulatedReasoning = '';
+      const transcript: ToolTranscriptEvent[] = [];
 
       await sendChatMessageStream(
         activeProvider,
@@ -493,6 +552,7 @@ export default function Home() {
             saveSessionsStreaming(liveUpdated);
           },
           onToolCall: (call) => {
+            transcript.push({ toolName: call.name, callId: call.id, status: 'started' });
             // Append tool call indicator as plain text (not blockquote, StreamRenderer strips those)
             const toolIndicator = `\n\n⚙️ Ejecutando: \`${call.name}\`...\n`;
             accumulatedContent += toolIndicator;
@@ -512,8 +572,17 @@ export default function Home() {
             saveSessionsStreaming(liveUpdated);
           },
           onToolResult: (result) => {
+            transcript.push({
+              toolName: result.name,
+              callId: result.callId,
+              status: result.blocked ? 'blocked' : result.success ? 'completed' : 'failed',
+              ms: result.executionTimeMs,
+              note: result.blocked ? 'denegado por permisos' : undefined,
+            });
             // Replace the "executing" indicator with the result
-            const resultIndicator = `\n✅ \`${result.name}\` completado (${Math.round(result.executionTimeMs)}ms)\n`;
+            const resultIndicator = result.blocked
+              ? `\n⛔ \`${result.name}\` bloqueado por permisos\n`
+              : `\n✅ \`${result.name}\` completado (${Math.round(result.executionTimeMs)}ms)\n`;
             accumulatedContent += resultIndicator;
             const liveSessions = getAppStoreSnapshot().sessions;
             const liveUpdated = liveSessions.map((s) => {
@@ -563,6 +632,7 @@ export default function Home() {
                       finish_reason: finishReason,
                       asks: pendingAsks,
                       askAnswered: pendingAsks ? false : undefined,
+                      toolTranscript: transcript.length > 0 ? [...transcript] : undefined,
                     };
                   }
                   return m;
@@ -603,19 +673,297 @@ export default function Home() {
         agentRules,
         agentSkills,
         activePersona || undefined,
+        undefined,
+        runtimeSnapshot,
       );
     },
-    [activeProvider, activeModelId, activeSession, globalSystemPrompt, isGenerating, activeCachedModels, agentRules, agentSkills, activePersona]
+    [activeProvider, activeModelId, activeSession, globalSystemPrompt, isGenerating, activeCachedModels, agentRules, agentSkills, activePersona, runtimeSnapshot]
   );
 
-  // Handler: Send Message & Stream
+  // Helper: turno local sin API (respuestas de slash commands)
+  const appendLocalTurn = useCallback((sessionId: string, userContent: string, assistantContent: string, isError = false) => {
+    const now = getCurrentTimestamp();
+    const currentSessions = getAppStoreSnapshot().sessions;
+    const updated = currentSessions.map((s) => {
+      if (s.id !== sessionId) return s;
+      return {
+        ...s,
+        messages: [
+          ...s.messages,
+          { id: createId('msg_u'), role: 'user', content: userContent, timestamp: now } as ChatMessage,
+          { id: createId('msg_a'), role: 'assistant', content: assistantContent, timestamp: now, model: activeModelId, isError: isError || undefined } as ChatMessage,
+        ],
+        updatedAt: now,
+      };
+    });
+    saveSessions(updated);
+  }, [activeModelId]);
+
+  // Ejecutor de slash commands (100% local salvo /subagent y /compact que usan tu API)
+  const runSlashCommand = useCallback(
+    async (raw: string): Promise<boolean> => {
+      const parsed = parseSlashCommand(raw);
+      if (!parsed || !activeSession) return false;
+      const sessionId = activeSession.id;
+      const store = getAppStoreSnapshot();
+      const sessionTodos = store.todosBySession?.[sessionId] || [];
+      const sessionPlan = store.plansBySession?.[sessionId] || null;
+
+      const saveTodos = (next: typeof sessionTodos) => {
+        saveTodosBySession({ ...(store.todosBySession || {}), [sessionId]: next });
+      };
+
+      switch (parsed.name) {
+        case '/help': {
+          const lines = SLASH_COMMANDS.map((c) => `- \`${c.usage}\` — ${c.description}`);
+          appendLocalTurn(sessionId, raw, `## Comandos del agente\n\n${lines.join('\n')}\n\nTodo se ejecuta en tu navegador salvo /subagent y /compact, que usan tu API configurada.`);
+          return true;
+        }
+        case '/status': {
+          const open = sessionTodos.filter((t) => t.status !== 'completed');
+          const done = sessionTodos.length - open.length;
+          const denied = Object.entries(store.toolPermissions || {}).filter(([, m]) => m === 'deny').map(([n]) => n);
+          const lastAssistant = [...(store.sessions.find((s) => s.id === sessionId)?.messages || [])].reverse().find((m) => m.role === 'assistant');
+          const lastTranscript = lastAssistant?.toolTranscript?.length ? transcriptToText(lastAssistant.toolTranscript) : '';
+          const lastTools = lastTranscript ? `\nÚltimo turno:\n${lastTranscript}` : '';
+          appendLocalTurn(
+            sessionId,
+            raw,
+            `## Estado del agente\n\n- TODOs: ${open.length} abiertos, ${done} completados\n- Plan: ${sessionPlan?.status || 'none'}${sessionPlan?.goal ? ` — ${sessionPlan.goal}` : ''}\n- Memoria: ${store.memory?.project || store.memory?.session ? 'cargada' : 'vacía'}\n- Permisos denegados: ${denied.length > 0 ? denied.join(', ') : 'ninguno'}\n- Checkpoint: ${store.checkpoint?.sessionId === sessionId ? `disponible (${store.checkpoint.label || 'último turno'})` : 'no disponible'}${lastTools}`
+          );
+          return true;
+        }
+        case '/plan': {
+          const parts = parsed.args.split('|').map((p) => p.trim()).filter(Boolean);
+          if (parts.length < 2) {
+            appendLocalTurn(sessionId, raw, 'Uso: `/plan objetivo | paso 1 | paso 2 | ...` (mínimo 1 objetivo + 1 paso).', true);
+            return true;
+          }
+          const plan = createPlan(parts[0], parts.slice(1));
+          savePlansBySession({ ...(store.plansBySession || {}), [sessionId]: plan });
+          appendLocalTurn(
+            sessionId,
+            raw,
+            `## Plan propuesto (SIN aprobar)\n\nObjetivo: ${plan.goal}\n\n${plan.steps.map((s, i) => `${i + 1}. ${s.text}`).join('\n')}\n\nUsa \`/approve\` para aprobarlo. Sin aprobación, el agente no lo ejecuta.`
+          );
+          return true;
+        }
+        case '/approve': {
+          if (!sessionPlan || sessionPlan.status === 'none' || !sessionPlan.goal) {
+            appendLocalTurn(sessionId, raw, 'No hay ningún plan propuesto. Crea uno con `/plan objetivo | paso 1 | ...`.', true);
+            return true;
+          }
+          const approved = { ...sessionPlan, status: 'approved' as const, updatedAt: getCurrentTimestamp() };
+          savePlansBySession({ ...(store.plansBySession || {}), [sessionId]: approved });
+          appendLocalTurn(sessionId, raw, `Plan aprobado: **${approved.goal}**. Describe la primera acción o di "ejecuta el plan" para empezar.`);
+          return true;
+        }
+        case '/todos': {
+          if (sessionTodos.length === 0) {
+            appendLocalTurn(sessionId, raw, 'No hay TODOs en esta sesión. Añade uno con `/todo add <texto>`.');
+            return true;
+          }
+          const lines = sessionTodos.map((t, i) => {
+            const icon = t.status === 'completed' ? '✅' : t.status === 'in_progress' ? '🔄' : '⬜';
+            return `${i + 1}. ${icon} ${t.text}`;
+          });
+          appendLocalTurn(sessionId, raw, `## TODOs de la sesión\n\n${lines.join('\n')}\n\n\`/todo start N\` · \`/todo done N\``);
+          return true;
+        }
+        case '/todo': {
+          const sub = parsed.args.split(' ')[0]?.toLowerCase() || '';
+          if (sub === 'add') {
+            const text = parsed.args.slice(3).trim();
+            if (!text) {
+              appendLocalTurn(sessionId, raw, 'Uso: `/todo add <texto>`.', true);
+              return true;
+            }
+            saveTodos([...sessionTodos, createTodo(text)]);
+            appendLocalTurn(sessionId, raw, `TODO añadido (${sessionTodos.length + 1}): ${text}`);
+            return true;
+          }
+          if (sub === 'done' || sub === 'start') {
+            const n = parseInt(parsed.args.split(' ')[1] || '', 10);
+            if (!Number.isFinite(n) || n < 1 || n > sessionTodos.length) {
+              appendLocalTurn(sessionId, raw, `Uso: \`/todo ${sub} N\` con N entre 1 y ${sessionTodos.length}.`, true);
+              return true;
+            }
+            const target = sessionTodos[n - 1];
+            saveTodos(setTodoStatus(sessionTodos, target.id, sub === 'done' ? 'completed' : 'in_progress'));
+            appendLocalTurn(sessionId, raw, `TODO ${n} → ${sub === 'done' ? 'completado ✅' : 'en curso 🔄'}.`);
+            return true;
+          }
+          appendLocalTurn(sessionId, raw, 'Uso: `/todo add <texto>` · `/todo start N` · `/todo done N`.', true);
+          return true;
+        }
+        case '/memory': {
+          const sub = parsed.args.split(' ')[0]?.toLowerCase() || '';
+          if (sub === 'show') {
+            const mem = store.memory;
+            appendLocalTurn(
+              sessionId,
+              raw,
+              `## Memoria\n\n**Proyecto:**\n${mem?.project || '(vacía)'}\n\n**Sesión:**\n${mem?.session || '(vacía)'}`
+            );
+            return true;
+          }
+          if (sub === 'clear') {
+            saveAgentMemory({ project: '', session: '', updatedAt: getCurrentTimestamp() });
+            appendLocalTurn(sessionId, raw, 'Memoria borrada.');
+            return true;
+          }
+          if (sub === 'project' || sub === 'session') {
+            const text = parsed.args.slice(sub.length).trim();
+            if (!text) {
+              appendLocalTurn(sessionId, raw, `Uso: \`/memory ${sub} <texto>\`.`, true);
+              return true;
+            }
+            const mem = store.memory || { project: '', session: '', updatedAt: 0 };
+            const nextMemory = sub === 'project'
+              ? { project: text, session: mem.session || '', updatedAt: getCurrentTimestamp() }
+              : { project: mem.project || '', session: text, updatedAt: getCurrentTimestamp() };
+            saveAgentMemory(nextMemory);
+            appendLocalTurn(sessionId, raw, `Memoria de ${sub === 'project' ? 'proyecto' : 'sesión'} guardada (${text.length} caracteres). Se inyecta al prompt automáticamente.`);
+            return true;
+          }
+          appendLocalTurn(sessionId, raw, 'Uso: `/memory show` · `/memory project <texto>` · `/memory session <texto>` · `/memory clear`.', true);
+          return true;
+        }
+        case '/permissions': {
+          const [mode, tool] = parsed.args.split(/\s+/);
+          if (!mode) {
+            const rows = Object.entries(store.toolPermissions || {}).map(([n, m]) => `- \`${n}\`: ${m}`);
+            appendLocalTurn(sessionId, raw, `## Permisos de herramientas\n\n${rows.join('\n')}\n\nCambia con \`/permissions allow|deny <tool>\`. Lo denegado falla cerrado y queda en el transcript.`);
+            return true;
+          }
+          if ((mode !== 'allow' && mode !== 'deny') || !tool) {
+            appendLocalTurn(sessionId, raw, 'Uso: `/permissions allow|deny <tool>` (ej: `/permissions deny web_search`).', true);
+            return true;
+          }
+          saveToolPermissions({ ...(store.toolPermissions || {}), [tool]: mode });
+          appendLocalTurn(sessionId, raw, `Permiso actualizado: \`${tool}\` → ${mode}.`);
+          return true;
+        }
+        case '/subagent': {
+          if (!parsed.args) {
+            appendLocalTurn(sessionId, raw, 'Uso: `/subagent <tarea acotada>` (ej: `/subagent investiga los precios actuales de GPUs`).', true);
+            return true;
+          }
+          if (!activeProvider.apiKey?.trim()) {
+            appendLocalTurn(sessionId, raw, 'El subagente necesita tu API Key: configúrala en Ajustes primero.', true);
+            return true;
+          }
+          if (isGenerating) {
+            appendLocalTurn(sessionId, raw, 'Espera a que termine la generación actual antes de delegar.', true);
+            return true;
+          }
+          appendLocalTurn(sessionId, raw, `🔍 Subagente delegado: *${parsed.args}*\n\n(Herramientas permitidas: web_search. Contexto aislado.)`);
+          try {
+            const latest = getAppStoreSnapshot().sessions.find((s) => s.id === sessionId);
+            const req = buildSubagentRequest(parsed.args, latest?.messages || [], ['web_search']);
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 90000);
+            const res = await requestSingleCompletion(
+              activeProvider,
+              activeModelId,
+              buildSubagentSystemPrompt(req),
+              [...req.context, { role: 'user', content: req.task }],
+              req.allowedTools,
+              ctrl.signal
+            ).finally(() => clearTimeout(timer));
+            const toolsNote = res.toolUses.length > 0
+              ? `\n\n---\n*Subagente usó: ${res.toolUses.map((t) => `${t.name}(${t.success ? 'ok' : t.blocked ? 'bloqueado' : 'fallo'})`).join(', ')}*`
+              : '';
+            const now = getCurrentTimestamp();
+            const after = getAppStoreSnapshot().sessions.map((s) => {
+              if (s.id !== sessionId) return s;
+              return {
+                ...s,
+                messages: [
+                  ...s.messages,
+                  { id: createId('msg_a'), role: 'assistant', content: `## Resultado del subagente\n\n${res.content || '(sin contenido)'}${toolsNote}`, timestamp: now, model: activeModelId } as ChatMessage,
+                ],
+                updatedAt: now,
+              };
+            });
+            saveSessions(after);
+          } catch (e) {
+            appendLocalTurn(sessionId, `/subagent (error)`, `El subagente falló: ${e instanceof Error ? e.message : String(e)}`, true);
+          }
+          return true;
+        }
+        case '/compact': {
+          if (isGenerating) {
+            appendLocalTurn(sessionId, raw, 'Espera a que termine la generación actual.', true);
+            return true;
+          }
+          const latest = getAppStoreSnapshot().sessions.find((s) => s.id === sessionId);
+          if (!latest || latest.messages.length === 0) {
+            appendLocalTurn(sessionId, raw, 'No hay nada que compactar todavía.', true);
+            return true;
+          }
+          appendLocalTurn(sessionId, raw, 'Compactando: pido al modelo un resumen para continuar ligero…');
+          const fresh = getAppStoreSnapshot().sessions.find((s) => s.id === sessionId);
+          if (fresh) {
+            void runGeneration(
+              'Resume esta conversación en 10 líneas: decisiones, datos clave y pendientes. Responde SOLO con el resumen.',
+              fresh.messages,
+              sessionId,
+              fresh
+            );
+          }
+          return true;
+        }
+        case '/undo': {
+          const cp = store.checkpoint;
+          if (!cp || cp.sessionId !== sessionId) {
+            appendLocalTurn(sessionId, raw, 'No hay checkpoint disponible para esta sesión.', true);
+            return true;
+          }
+          const restored = getAppStoreSnapshot().sessions.map((s) => {
+            if (s.id !== sessionId) return s;
+            return { ...s, messages: cp.messages.map((m) => ({ ...m })), updatedAt: getCurrentTimestamp() };
+          });
+          saveSessions(restored);
+          saveCheckpoint(null);
+          appendLocalTurn(sessionId, raw, `Checkpoint restaurado (${cp.label || 'último turno'}). Los mensajes volvieron al estado previo.`);
+          return true;
+        }
+        case '/clear': {
+          handleClearCurrentSession();
+          return true;
+        }
+        case '/export': {
+          setIsExportOpen(true);
+          return true;
+        }
+        default:
+          return false;
+      }
+    },
+    [activeSession, activeProvider, activeModelId, isGenerating, runGeneration, appendLocalTurn, handleClearCurrentSession, setIsExportOpen]
+  );
+
+  // Handler: Send Message & Stream (intercepta slash commands locales primero)
   const handleSendMessage = useCallback(
     async (userContent: string, contextMessagesOverride?: ChatMessage[]) => {
-      if (!userContent.trim() || !activeSession || isGenerating) return;
+      const trimmed = userContent.trim();
+      if (!trimmed || !activeSession || isGenerating) return;
+      if (!contextMessagesOverride) {
+        const parsed = parseSlashCommand(trimmed);
+        if (parsed) {
+          if (isKnownSlash(parsed.name)) {
+            await runSlashCommand(trimmed);
+            return;
+          }
+          appendLocalTurn(activeSession.id, trimmed, `Comando desconocido: \`${parsed.name}\`. Escribe /help para ver la lista.`, true);
+          return;
+        }
+      }
       const ctx = contextMessagesOverride ?? activeSession.messages;
-      await runGeneration(userContent, ctx, activeSession.id);
+      await runGeneration(trimmed, ctx, activeSession.id);
     },
-    [activeSession, isGenerating, runGeneration]
+    [activeSession, isGenerating, runGeneration, runSlashCommand, appendLocalTurn]
   );
 
   // Handler: Respond to an Ask-the-User card and continue the agent loop
@@ -842,6 +1190,8 @@ export default function Home() {
       agentRules,
       agentSkills,
       activePersona || undefined,
+      undefined,
+      runtimeSnapshot,
     );
   };
 
@@ -1047,6 +1397,32 @@ export default function Home() {
               <Sparkles className="w-4 h-4" />
               <span className="hidden sm:inline">Skills</span>
             </button>
+
+            {/* Agent status: plan + TODOs (estilo Claude Code, solo lectura) */}
+            {(activePlan?.goal || openTodoCount > 0) && (
+              <span
+                title={`${activePlan?.goal ? `Plan ${activePlan.status}: ${activePlan.goal}` : 'Sin plan'} · TODOs abiertos: ${openTodoCount}. Usa /status para detalle.`}
+                className="hidden md:flex flex-shrink-0 items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] font-medium text-neutral-600 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700"
+              >
+                <ListTodo className="w-3.5 h-3.5 text-accent" />
+                {activePlan?.goal ? `Plan: ${activePlan.status}` : 'Sin plan'}
+                <span className="opacity-60">·</span>
+                <span>TODOs: {openTodoCount}</span>
+              </span>
+            )}
+
+            {/* Undo last turn (checkpoint local) */}
+            {checkpoint?.sessionId === activeSession?.id && !isGenerating && (
+              <button
+                type="button"
+                id="header-undo-btn"
+                onClick={() => void runSlashCommand('/undo')}
+                title="Restaurar mensajes previos al último turno (/undo)"
+                className="flex-shrink-0 p-2 rounded-xl text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+              >
+                <Undo2 className="w-4 h-4" />
+              </button>
+            )}
 
             {/* Provider & Base URL Settings Trigger */}
             <button

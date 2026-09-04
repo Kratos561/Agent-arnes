@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { X, Trash2, ToggleLeft, ToggleRight, Sparkles, Upload, FileText, Clipboard } from 'lucide-react';

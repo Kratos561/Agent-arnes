@@ -18,6 +18,13 @@
 
 import { ProviderConfig } from './types';
 import { ASK_PROTOCOL_INSTRUCTIONS } from './agent-protocol';
+import type { AgentMemory, AgentPlan, AgentTodo, ToolPermissions } from './claude-runtime';
+import {
+  summarizeMemoryForPrompt,
+  summarizePlanForPrompt,
+  summarizePermissionsForPrompt,
+  summarizeTodosForPrompt,
+} from './claude-runtime';
 
 // ===== Types =====
 
@@ -78,6 +85,13 @@ export interface AssembleContext {
   runtimeVars?: Record<string, string>;
   /** Available tool names (injected into prompt) */
   toolNames?: string[];
+  /** Claude runtime snapshot (browser-local): memoria, TODOs, plan y permisos. */
+  runtime?: {
+    todos?: AgentTodo[];
+    memory?: AgentMemory | null;
+    plan?: AgentPlan | null;
+    toolPermissions?: ToolPermissions | null;
+  };
 }
 
 // ===== SKILL.md Parser (DeepSeek Harness format) =====
@@ -413,6 +427,24 @@ export function assemblePrompt(ctx: AssembleContext): string {
     });
   }
 
+  // 55: Project/session memory (browser-local)
+  const memoryText = summarizeMemoryForPrompt(ctx.runtime?.memory);
+  if (memoryText) {
+    sections.push({ name: 'runtime:memory', order: 55, text: memoryText });
+  }
+
+  // 60: Session TODOs
+  const todosText = summarizeTodosForPrompt(ctx.runtime?.todos || []);
+  if (todosText) {
+    sections.push({ name: 'runtime:todos', order: 60, text: todosText });
+  }
+
+  // 65: Explicit work plan (propose -> approve -> execute)
+  const planText = summarizePlanForPrompt(ctx.runtime?.plan);
+  if (planText) {
+    sections.push({ name: 'runtime:plan', order: 65, text: planText });
+  }
+
   // 100: User Rules
   const activeRules = ctx.activeRules.filter((r) => r.enabled);
   if (activeRules.length > 0) {
@@ -482,6 +514,12 @@ export function assemblePrompt(ctx: AssembleContext): string {
         '- NO describas datos que podrias buscar — BUSCALOS.',
       ].join('\n'),
     });
+  }
+
+  // 155: Tool permission policy (user-defined, browser-local)
+  const permissionsText = summarizePermissionsForPrompt(ctx.runtime?.toolPermissions);
+  if (permissionsText) {
+    sections.push({ name: 'tool:permissions', order: 155, text: permissionsText });
   }
 
   // 200: Safety & Compliance

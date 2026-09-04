@@ -1,14 +1,16 @@
 'use client';
 
 import React, { useRef, useEffect, useState } from 'react';
-import { 
-  Send, 
-  Square, 
-  Paperclip, 
-  X, 
-  FileText, 
-  Sparkles
+import {
+  Send,
+  Square,
+  Paperclip,
+  X,
+  FileText,
+  Sparkles,
+  Terminal
 } from 'lucide-react';
+import { SLASH_COMMANDS } from '@/lib/claude-runtime';
 
 interface ChatInputProps {
   onSendMessage: (message: string) => void;
@@ -41,7 +43,41 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     }
   }, [text]);
 
+  // Slash commands locales (estilo Claude Code). Tab o clic completa; Enter envía.
+  const slashToken = text.startsWith('/') && !text.includes('\n')
+    ? text.slice(1).split(' ')[0].toLowerCase()
+    : null;
+  const slashMatches = slashToken !== null
+    ? SLASH_COMMANDS.filter((c) => c.name.slice(1).startsWith(slashToken)).slice(0, 7)
+    : [];
+  const [slashIndex, setSlashIndex] = useState(0);
+
+  useEffect(() => {
+    setSlashIndex(0);
+  }, [slashToken]);
+
+  const completeSlash = (name: string) => {
+    setText(`${name} `);
+    textareaRef.current?.focus();
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (slashMatches.length > 0 && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+      e.preventDefault();
+      setSlashIndex((i) => (e.key === 'ArrowDown'
+        ? (i + 1) % slashMatches.length
+        : (i - 1 + slashMatches.length) % slashMatches.length));
+      return;
+    }
+    if (e.key === 'Tab' && slashMatches.length > 0) {
+      e.preventDefault();
+      completeSlash(slashMatches[slashIndex]?.name || slashMatches[0].name);
+      return;
+    }
+    if (e.key === 'Escape' && slashMatches.length > 0) {
+      setText('');
+      return;
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit();
@@ -137,6 +173,26 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           </div>
         )}
 
+        {/* Slash command autocomplete */}
+        {slashMatches.length > 0 && (
+          <div className="mx-3 mt-3 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 overflow-hidden">
+            {slashMatches.map((cmd, i) => (
+              <button
+                key={cmd.name}
+                type="button"
+                onMouseDown={(e) => { e.preventDefault(); completeSlash(cmd.name); }}
+                className={`w-full text-left px-3 py-2 flex items-center gap-2 text-xs transition-colors ${
+                  i === slashIndex ? 'bg-accent/10 text-accent' : 'text-neutral-600 dark:text-neutral-300'
+                }`}
+              >
+                <Terminal className="w-3.5 h-3.5 flex-shrink-0" />
+                <span className="font-mono font-semibold">{cmd.name}</span>
+                <span className="truncate opacity-70">{cmd.description}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Input area */}
         <div className="flex items-end gap-2 p-3 sm:p-3.5">
           {/* File attachment button */}
@@ -213,7 +269,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           </div>
           <div className="flex items-center gap-3">
             {text.length > 0 && <span>~{approxTokens} tokens ({text.length} caracteres)</span>}
-            <span className="hidden sm:inline">Shift + Enter para salto de línea</span>
+            <span className="hidden sm:inline">Shift + Enter para salto de línea · / para comandos</span>
           </div>
         </div>
       </div>

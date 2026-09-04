@@ -47,6 +47,8 @@ export interface ToolResult {
   result: string;
   success: boolean;
   executionTimeMs: number;
+  /** True cuando el bloqueo vino de la política de permisos (no de un fallo). */
+  blocked?: boolean;
 }
 
 export interface ToolPipelineContext {
@@ -56,6 +58,27 @@ export interface ToolPipelineContext {
 
 export type ToolPreHook = (ctx: ToolPipelineContext) => Promise<string | null>;
 export type ToolPostHook = (ctx: ToolPipelineContext, result: ToolResult) => Promise<ToolResult>;
+
+/**
+ * Permission checker inyectado por la UI (lee los permisos del store).
+ * Si no hay checker, todo lo registrado está permitido; lo desconocido se deniega.
+ */
+let permissionChecker: ((toolName: string) => boolean) | null = null;
+
+export function setToolPermissionChecker(fn: ((toolName: string) => boolean) | null): void {
+  permissionChecker = fn;
+}
+
+function isAllowedByPolicy(toolName: string): boolean {
+  if (permissionChecker) {
+    try {
+      return permissionChecker(toolName);
+    } catch {
+      return false;
+    }
+  }
+  return toolExecutors.has(toolName);
+}
 
 // ===== Tool Registry =====
 
@@ -126,6 +149,17 @@ export async function executeNativeTool(call: NativeToolCall): Promise<ToolResul
   }
 
   const ctx: ToolPipelineContext = { call };
+
+  if (!isAllowedByPolicy(call.name)) {
+    return {
+      callId: call.id,
+      name: call.name,
+      result: `[Bloqueado por permisos: "${call.name}" está denegado por el usuario. Ofrece una alternativa manual.]`,
+      success: false,
+      executionTimeMs: 0,
+      blocked: true,
+    };
+  }
 
   // Pre-execute hooks
   for (const hook of preHooks) {

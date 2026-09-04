@@ -33,11 +33,21 @@ export interface AskPayload {
   hideOptions?: boolean;
 }
 
+export interface ToolTranscriptEvent {
+  toolName: string;
+  callId: string;
+  status: 'started' | 'completed' | 'blocked' | 'failed';
+  ms?: number;
+  note?: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
   reasoning_content?: string; // For DeepSeek-R1 / o1 models with thinking process
+  /** Transcript estructurado de herramientas usadas en este turno (estilo Claude Code). */
+  toolTranscript?: ToolTranscriptEvent[];
   timestamp: number;
   model?: string;
   tokens?: {

@@ -16,6 +16,16 @@ import {
   buildAssistantToolCallMessage,
   registerBuiltinTools,
 } from './native-tools';
+import type { AgentMemory, AgentPlan, AgentTodo, RunBudget, ToolPermissions } from './claude-runtime';
+import { budgetAllowsTools, budgetLimitNotice, createBudgetState, DEFAULT_RUN_BUDGET } from './claude-runtime';
+
+export interface RuntimeSnapshot {
+  todos?: AgentTodo[];
+  memory?: AgentMemory | null;
+  plan?: AgentPlan | null;
+  toolPermissions?: ToolPermissions | null;
+  budget?: RunBudget;
+}
 
 export interface StreamCallbacks {
   onChunk: (chunk: string) => void;
@@ -191,6 +201,7 @@ export function buildHarnessSystemPrompt(
   activeSkills?: AgentSkill[],
   persona?: PersonaConfig,
   sessionPrompt?: string,
+  runtime?: RuntimeSnapshot,
 ) {
   return assemblePrompt({
     provider,
@@ -201,6 +212,14 @@ export function buildHarnessSystemPrompt(
     persona: persona || { id: 'default', name: 'Default', text: '', isActive: true },
     sessionPrompt,
     toolNames: getRegisteredToolNames(),
+    runtime: runtime
+      ? {
+          todos: runtime.todos,
+          memory: runtime.memory,
+          plan: runtime.plan,
+          toolPermissions: runtime.toolPermissions,
+        }
+      : undefined,
   });
 }
 
@@ -237,6 +256,7 @@ export async function sendChatMessageStream(
   agentSkills?: AgentSkill[],
   persona?: PersonaConfig,
   sessionPrompt?: string,
+  runtime?: RuntimeSnapshot,
 ): Promise<void> {
   let content = '';
   let reasoning = '';
@@ -244,7 +264,7 @@ export async function sendChatMessageStream(
   let usage: { prompt?: number; completion?: number; total?: number } | undefined;
 
   const formatted: Array<{ role: string; content: string | null; tool_calls?: any[]; tool_call_id?: string }> = [
-    { role: 'system', content: buildHarnessSystemPrompt(provider, modelId, customSystemPrompt, agentRules, agentSkills, persona, sessionPrompt) },
+    { role: 'system', content: buildHarnessSystemPrompt(provider, modelId, customSystemPrompt, agentRules, agentSkills, persona, sessionPrompt, runtime) },
     ...messages.filter((message) => !message.isError && message.content.trim()).map((message) => ({ role: message.role, content: message.content })),
   ];
 
@@ -252,11 +272,12 @@ export async function sendChatMessageStream(
   const compaction = compactContext(formatted.map((m) => ({ role: m.role, content: m.content || '' })), windowMax, true);
   const contextMessages: Array<{ role: string; content: string | null; tool_calls?: any[]; tool_call_id?: string }> = compaction.messages.map((m) => ({ role: m.role, content: m.content }));
 
-  const MAX_AGENTIC_ITERATIONS = 5;
+  const MAX_AGENTIC_ITERATIONS = runtime?.budget?.maxIterations ?? 5;
   let agenticIteration = 0;
   let finalContent = '';
   let finalReasoning = '';
   let toolJustProcessed = false;
+  const budgetState = createBudgetState(runtime?.budget ?? DEFAULT_RUN_BUDGET);
 
   // Check if native tools are available
   const hasNativeTools = getToolSchemas().length > 0;
@@ -419,6 +440,14 @@ export async function sendChatMessageStream(
 
       // --- Handle native tool calls ---
       if (finishIsToolCalls && streamingToolCalls.length > 0) {
+        if (!budgetAllowsTools(budgetState)) {
+          const notice = budgetLimitNotice(budgetState);
+          content += `\n\n${notice}`;
+          finalContent = (finalContent ? finalContent + '\n\n' : '') + content;
+          return false;
+        }
+        budgetState.toolCallsUsed += streamingToolCalls.length;
+
         // Notify UI about tool calls
         for (const call of streamingToolCalls) {
           callbacks.onToolCall?.(call);
@@ -519,4 +548,91 @@ export async function sendChatMessageStream(
   }
 
   callbacks.onDone(finalContent || content, finalReasoning || reasoning, usage, finishReason || 'stop');
+}
+
+// ============================================================================
+// Subagente: completion aislada, acotada y sin streaming.
+// Usa el mismo proveedor del usuario; como máximo 1 ronda de herramientas
+// limitada a `allowedTools`. Todo ocurre en el navegador.
+// ============================================================================
+
+export interface SingleCompletionResult {
+  content: string;
+  toolUses: Array<{ name: string; success: boolean; blocked?: boolean }>;
+}
+
+export async function requestSingleCompletion(
+  provider: ProviderConfig,
+  modelId: string,
+  systemPrompt: string,
+  messages: Array<{ role: string; content: string }>,
+  allowedTools: string[],
+  signal?: AbortSignal,
+): Promise<SingleCompletionResult> {
+  const toolUses: SingleCompletionResult['toolUses'] = [];
+  const schemas = getToolSchemas().filter((s) => allowedTools.includes(s.function.name));
+
+  const postOnce = async (msgs: Array<Record<string, unknown>>) => {
+    const payload: Record<string, unknown> = {
+      model: modelId.trim(),
+      messages: msgs,
+      stream: false,
+      temperature: 0.3,
+      top_p: 1.0,
+    };
+    if (schemas.length > 0) payload.tools = schemas;
+    const { response } = await fetchWithCORSFallback(
+      endpoint(provider.baseUrl, 'chat/completions'),
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headersFor(provider, false) },
+        body: JSON.stringify(payload),
+        signal,
+      },
+      provider,
+      provider.useProxy !== false
+    );
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      throw new Error(body?.error?.message || body?.message || `Error HTTP ${response.status}`);
+    }
+    return (await response.json()) as Record<string, unknown>;
+  };
+
+  const base: Array<Record<string, unknown>> = [
+    { role: 'system', content: systemPrompt },
+    ...messages.map((m) => ({ role: m.role, content: m.content })),
+  ];
+
+  const first = await postOnce(base);
+  const calls = extractToolCallsFromResponse(first).filter((c) => c.name.length > 0);
+  if (calls.length === 0) {
+    return { content: String(extractDelta(first).content || ''), toolUses };
+  }
+
+  const permitted = calls.filter((c) => allowedTools.includes(c.name));
+  const rejected = calls.filter((c) => !allowedTools.includes(c.name));
+  for (const r of rejected) {
+    toolUses.push({ name: r.name || '(desconocida)', success: false, blocked: true });
+  }
+
+  const results = await executeNativeTools(permitted);
+  for (const r of results) {
+    toolUses.push({ name: r.name, success: r.success, blocked: r.blocked });
+  }
+
+  const followUp: Array<Record<string, unknown>> = [
+    ...base,
+    buildAssistantToolCallMessage(permitted.length > 0 ? permitted : [{ id: 'call_none', name: 'none', arguments: {} }]) as unknown as Record<string, unknown>,
+    ...buildToolResultMessages(results).map((m) => ({ ...m })),
+  ];
+  if (rejected.length > 0) {
+    followUp.push({
+      role: 'user',
+      content: `El subagente intentó usar herramientas no permitidas (${rejected.map((r) => r.name).join(', ')}). Ignóralas y responde solo con lo permitido.`,
+    });
+  }
+
+  const second = await postOnce(followUp);
+  return { content: String(extractDelta(second).content || ''), toolUses };
 }
